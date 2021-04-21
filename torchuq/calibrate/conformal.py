@@ -12,6 +12,7 @@ from torch.optim import lr_scheduler
 import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
+from .basic import Calibrator 
 
 class DistributionConformal:
     """

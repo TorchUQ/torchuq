@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt 
 
+
 def plot_cdf(predictions, labels):
     margin = (labels.max() - labels.min()) * 0.3
     y_range = torch.linspace(labels.min() - margin, labels.max() + margin, 100)
@@ -21,7 +22,6 @@ def plot_cdf(predictions, labels):
     plt.scatter(labels[:max_plot], label_cdfs[:max_plot], color=palette[np.arange(max_plot)], marker='x', alpha=0.5, zorder=2)
     plt.ylabel('cdf')
     plt.xlabel('value')
-    plt.show()
     
     
 def plot_icdf(predictions, labels):
@@ -37,8 +37,8 @@ def plot_icdf(predictions, labels):
     palette = np.array(sns.color_palette("husl", max_plot))
     for i in range(max_plot):
         plt.plot(values[:, i], c_range, c=palette[i], alpha=0.5)
-
+    
     plt.scatter(labels[:max_plot], label_cdfs[:max_plot], color=palette[np.arange(max_plot)], marker='x', alpha=0.5, zorder=2)
     plt.ylabel('cdf')
     plt.xlabel('value')
-    plt.show()
+    
