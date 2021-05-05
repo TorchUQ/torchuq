@@ -10,6 +10,8 @@ import numpy as np
 from .utils import *
 
 
+
+    
 def compute_ece(predictions, labels):
     max_confidence, prediction = predictions.max(dim=1)
     correct = (prediction == labels).type(torch.float32)
@@ -71,3 +73,23 @@ def plot_calibration_diagram_simple(predictions, labels, verbose=False, plot_ax=
     smooth_filter = get_uniform_filter(1000, predictions.device)
     make_figure_calibration(smooth_filter(sorted_confidence).cpu(), smooth_filter(sorted_correct).cpu(), plot_ax=plot_ax)   
     
+    
+def plot_calibration_bin(predictions, labels, num_bins=15):
+    with torch.no_grad():
+        ranking = torch.argsort(predictions.max(dim=1)[0])
+        correct = (predictions.argmax(dim=1) == labels.to(predictions.device)).type(torch.float32)
+        sorted_confidence = predictions.max(dim=1)[0][ranking]
+        sorted_correct = correct[ranking]
+        bin_elem = len(predictions) // num_bins
+        confidences = []
+        accuracy = []
+        for i in range(num_bins):
+            confidences.append(sorted_confidence[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
+            accuracy.append(sorted_correct[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
+        confidence_boundary = sorted_confidence[::bin_elem].cpu()
+        confidences = np.array(confidences)
+        plt.bar(x=confidence_boundary[:-1], height=accuracy, 
+                width=confidence_boundary[1:] - confidence_boundary[:-1], alpha=0.5, align='edge')
+        for i in range(num_bins):
+            plt.plot([confidences[i], confidences[i]], [0, accuracy[i]], c='b')
+        plt.plot([0,1], [0,1], c='g')

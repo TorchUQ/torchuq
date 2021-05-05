@@ -47,7 +47,9 @@ class Calibrator:
         if self.input_type == 'point':
             assert len(predictions.shape) == 1, "Point prediction should have shape [batch_size]"
         elif self.input_type == 'interval':
-            assert len(predictions.shape) == 2 and len(predictions) == 2, "interval predictions should have shape [batch_size, 2]"
+            assert len(predictions.shape) == 2 and predictions.shape[1] == 2, "interval predictions should have shape [batch_size, 2]"
+        elif self.input_type == 'quantile':
+            assert len(predictions.shape) == 2 or (len(predictions.shape) == 3 and predictions.shape[2] == 2), "quantile predictions should have shape [batch_size, num_quantile] or [batch_size, num_quantile, 2]" 
             
     def assert_type(self, input_type, valid_types):
         msg = "Input data type not supported, input data type is %s, supported types are %s" % (input_type, " ".join(valid_types)) 

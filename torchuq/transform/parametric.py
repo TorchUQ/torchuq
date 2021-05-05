@@ -15,8 +15,44 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
+from .basic import Calibrator
 
 
+class TemperatureScaling(Calibrator):
+    def __init__(self, verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
+        super(TemperatureScaling, self).__init__(input_type='categorical')
+        self.verbose = verbose
+        self.temperature = None
+        
+    def train(self, predictions, labels, num_classes=None):
+        # Use gradient descent to find the optimal temperature
+        # Can add bisection option in the future, since it should be considerably faster
+        self.temperature = torch.ones(1, 1, requires_grad=True, device=predictions.device)
+        optim = torch.optim.Adam([self.temperature], lr=1e-3)
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, mode='min', patience=3, threshold=1e-6, factor=0.5)
+            
+        log_prediction = torch.log(predictions + 1e-10).detach()
+        
+        for iteration in range(10000): # Iterate at most 10k iterations, but expect to stop early
+            optim.zero_grad()
+            adjusted_predictions = log_prediction / self.temperature
+            loss = F.cross_entropy(adjusted_predictions, labels)
+            loss.backward()
+            optim.step()
+            lr_scheduler.step(loss)
+            if optim.param_groups[0]['lr'] < 1e-6:   # Hitchhike the lr scheduler to terminate if no progress
+                break
+            if self.verbose and iteration % 100 == 0:
+                print("Iteration %d, lr=%.5f, NLL=%.3f" % (iteration, optim.param_groups[0]['lr'], loss.cpu().item()))
+
+    def __call__(self, predictions):
+        log_prediction = torch.log(predictions + 1e-10)
+        return torch.softmax(log_prediction / self.temperature, dim=1)
+    
+    
+    
+    
+    
 class CalibratorDirichlet:
     """
     Device is the preferred device, all computation is executed on that device as much as possible, 
