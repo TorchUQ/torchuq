@@ -14,12 +14,10 @@ import numpy as np
 # from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
-from torchuq.models import *
-from torchuq.metrics import *
+
+from ..metric.decision import *
 
 
-
-    
 # The critic model that take as input a probability predictor, and find the maximum discrepancy 
 class CriticDecision(nn.Module):
     def __init__(self, num_classes=1000, num_action=2):
@@ -109,24 +107,26 @@ class CriticDecision(nn.Module):
     
 
     
-            
-            
+    
             
             
 class CalibratorDecision():
-    def __init__(self, verbose=False, device=None):
+    def __init__(self, verbose=False, device=None, save_path=None):
         self.critics = []
         self.verbose = verbose
         self.device = device
+        self.save_path = save_path
         
-    def __call__(self, x):
-        for critic in self.critics:
+    def __call__(self, x, max_critic=-1):
+        for index, critic in enumerate(self.critics):
             with torch.no_grad():
                 bias = critic.adjustment[critic(x).argmax(dim=1)]
             x = x + bias   # Don't use inplace here 
+            if index + 1 == max_critic:
+                break
         return x
     
-    def train(self, predictions, labels, calib_steps=200, num_action=2, num_critic_epoch=50, writer=None, norm=1):
+    def train(self, predictions, labels, calib_steps=200, num_action=2, num_critic_epoch=50, writer=None, norm=1, test_predictions=None, test_labels=None):
         start_time = time.time()
         for step in range(calib_steps):
             with torch.no_grad():
@@ -149,10 +149,26 @@ class CalibratorDecision():
                     writer.add_scalar('accuracy', accuracy, step)
                     writer.add_histogram('true_loss_hist', true_loss, step)
                     writer.add_histogram('gap_hist', gap, step)
-
+                if test_predictions is not None:
+                    modified_prediction = self(test_predictions) 
+                    pred_loss, true_loss = compute_decision_utility(modified_prediction.to(self.device),
+                                                                    test_labels.to(self.device), 
+                                                                    num_action=num_action)
+                    accuracy = compute_accuracy(modified_prediction.to(self.device), test_labels.to(self.device))
+                    gap = pred_loss - true_loss
+                    if writer is not None: 
+                        writer.add_scalar('true_loss_test', true_loss.mean(), step)
+                        writer.add_scalar('gap_test', gap.abs().mean(), step)
+                        writer.add_scalar('accuracy_test', accuracy, step)
+                        writer.add_histogram('true_loss_hist_test', true_loss, step)
+                        writer.add_histogram('gap_hist_test', gap, step)
+                
                 if self.verbose:
                     print("Step %d, time=%.1f" % (step, time.time() - start_time))
-                    
+            if step % 10 == 0 and self.save_path is not None:
+                self.save(os.path.join(self.save_path, 
+                                       '%d-%d-%d.tar' % (predictions.shape[1], num_action, norm)))
+                
     def save(self, save_path):
         if len(self.critics) == 0:
             return

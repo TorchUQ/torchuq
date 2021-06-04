@@ -13,8 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from .basic import Calibrator 
-from .. import models
-from torchuq.models.flow import NafFlow
+from ..models.flow import NafFlow
 
 
 class DistributionConformal:

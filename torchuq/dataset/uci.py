@@ -179,7 +179,7 @@ def _load_powerplant():
     plant that record the ambient variables every second.
     the variables are given without normalization.
     """
-    data_file = os.path.join(data_dir, "power-plant/CCPP/Folds5x2_pp.xlsx")
+    data_file = os.path.join(data_dir, "power-plant/Folds5x2_pp.xlsx")
     data = pd.read_excel(data_file)
     x = data.values[:, :-1]
     y = data.values[:, -1]
@@ -338,7 +338,7 @@ def _load_naval():
     17 - GT Compressor decay state coefficient.
     18 - GT Turbine decay state coefficient.
     """
-    data = np.loadtxt(os.path.join(data_dir, "naval/UCI CBM Dataset/data.txt"))
+    data = np.loadtxt(os.path.join(data_dir, "naval/data.txt"))
     X = data[:, :-2]
     y_compressor = data[:, -2]
     y_turbine = data[:, -1]
@@ -453,7 +453,7 @@ def _load_crime():
 
     attributes = np.stack(attributes, axis=0)
 
-    reader = open(os.path.join(data_dir, 'crime/names'))
+    reader = open(os.path.join(data_dir, 'crime/communities.names'))
     names = []
     for i in range(128):
         line = reader.readline().split()[1]

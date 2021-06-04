@@ -63,6 +63,7 @@ class CalibratorDirichlet:
         self.device = device
         self.verbose = verbose
     
+    # The input to this has to be log probabilities
     def train(self, predictions, labels, num_epochs=100):            
         if self.device is not None:
             device = self.device
