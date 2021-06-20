@@ -99,7 +99,6 @@ def get_ham10000(data_dir='.', split_seed=0, test_fraction=0.2, val_fraction=0.2
     
     # Copy fewer class to balance the number of 7 classes
     if balance_train:
-        # data_aug_rate = [1, 1, 1, 1, 1, 1, 1] # 
         data_aug_rate = [15,10,5,50,0,40,5]
         for i in range(7):
             if data_aug_rate[i]:

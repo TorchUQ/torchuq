@@ -14,10 +14,16 @@ The available datasets include:
 [concrete](https://archive.ics.uci.edu/ml/datasets/concrete+compressive+strength)
 [power-plant](https://archive.ics.uci.edu/ml/datasets/Combined+Cycle+Power+Plant) 
 [yacht](https://archive.ics.uci.edu/ml/datasets/yacht+hydrodynamics)
-[energy-efficiency](https://archive.ics.uci.edu/ml/datasets/energy+efficiency)  
+[energy-efficiency](https://archive.ics.uci.edu/ml/datasets/energy+efficiency)
 [naval](https://archive.ics.uci.edu/ml/datasets/Condition+Based+Maintenance+of+Naval+Propulsion+Plants)
 [protein](https://archive.ics.uci.edu/ml/datasets/Physicochemical+Properties+of+Protein+Tertiary+Structure)
 [crime](http://archive.ics.uci.edu/ml/datasets/communities+and+crime)
 
-We also include datasets that are not in the UCI repository, but for convenience are also included under the same interface
+Some datasets are not in the UCI repository, but for convenience we include them under the same interface
 [kin8nm](https://www.openml.org/d/189) 
+
+
+
+## Skin Legion classification 
+
+To access the [HAM10000](https://www.nature.com/articles/sdata2018161) dataset 
