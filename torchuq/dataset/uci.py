@@ -1,8 +1,9 @@
 """
 IO module for UCI datasets for regression
 
-Source: https://github.com/aamini/evidential-regression/blob/c0823f18ff015f5eb46a23f0039f4d62b76bc8d1/data_loader.py
+Adapted from and credit to: https://github.com/aamini/evidential-regression/blob/c0823f18ff015f5eb46a23f0039f4d62b76bc8d1/data_loader.py
 """
+
 import numpy as np
 import pandas as pd
 import os
@@ -12,95 +13,54 @@ from torch.utils.data import random_split, DataLoader, TensorDataset
 from sklearn.datasets import load_boston
 
 
-def get_uci_datasets(name, split_seed=0, test_fraction=0.10, train_frac=1.0, val_fraction = 0.25):
+uci_regression_names = ["wine", "boston", "concrete", "power-plant", "yacht", "energy-efficiency", "kin8nm", "naval", "protein", "crime"]
+
+            
+
+def get_uci_regression_datasets(name, val_fraction = 0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
     r"""
     Returns a UCI regression dataset in the form of numpy arrays.
     
     Arguments:
         name (str): name of the dataset
-        split_seed (int): seed used to generate train/test split
-        test_fraction (float): fraction of the dataset used for the test set
-        val_fraction (float): fraction of dataset to use for validation (among those that are not test)
-
+        val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None
+        test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None
+        split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled
+        normalize (boolean): normalize the dataset to have zero mean and unit variance 
+        
     Returns:
-        X_train (numpy.ndarray): training features
-        y_train (numpy.ndaray): training label
-        X_test (numpy.ndarray): test features
-        y_test (numpy.ndarray): test labels
-        y_train_scale (float): standard deviation of training labels
+        train_dataset (torch.utils.data.Dataset): training dataset
+        val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0
+        test_dataset (torch.utils.data.Dataset): test dataset, None if test_fraction=0.0 
     """
     # load full dataset
-    load_funs = {
-        "wine": _load_wine,
-        "boston": _load_boston,
-        "concrete": _load_concrete,
-        "power-plant": _load_powerplant,
-        "yacht": _load_yacht,
-        "energy-efficiency": _load_energy_efficiency,
-        "kin8nm": _load_kin8nm,
-        "naval": _load_naval,
-        "protein": _load_protein,
-        "crime": _load_crime,
-    }
-    if name in ["boston", "concrete", "wine"] and test_fraction <= 0.25:
-        test_fraction = 0.25 
 
-    print("Loading dataset {}....".format(name))
-    if name == "depth":
-        (X_train, y_train), (X_test, y_test) = load_funs[name]()
-        y_scale = np.array([[1.0]])
-        return (X_train, y_train), (X_test, y_test), y_scale
+    if verbose:
+        print("Loading dataset {}....".format(name))
 
-    X, y = load_funs[name]()
-    X = X.astype(np.float32)
+    X, y = uci_regression_load_funs[name]()    
+    X = X.astype(np.float32)   # X should be an array of shape [num_data, feature_dim]
     y = y.astype(np.float32)
 
-    # We create the train and test sets with 90% and 10% of the data
-
-    if split_seed == -1:  # Do not shuffle!
+    # Randomly shuffle the dataset
+    if split_seed == -1:  # Do not shuffle
         permutation = range(X.shape[0])
     else:
         rs = np.random.RandomState(split_seed)
         permutation = rs.permutation(X.shape[0])
 
-    size_train = int(np.round(X.shape[0] * (1 - test_fraction)))
-    index_train = permutation[0:size_train]
-    index_test = permutation[size_train:]
-
-    X_train = X[index_train, :]
-    X_test = X[index_test, :]
-    if name == "depth":
-        y_train = y[index_train]
-        y_test = y[index_test]
-    else:
-        y_train = y[index_train, None]
-        y_test = y[index_test, None]
-
-    if train_frac != 1.0:
-        rs = np.random.RandomState(split_seed)
-        permutation = rs.permutation(X_train.shape[0])
-        n_train = int(train_frac * len(X_train))
-        X_train = X_train[:n_train]
-        y_train = y_train[:n_train]
-
-    if split_seed == -1:  # Do not shuffle!
-        permutation = range(X_train.shape[0])
-    else:
-        rs = np.random.RandomState(split_seed)
-        permutation = rs.permutation(X_train.shape[0])
-
-    size_train = int(np.round(X_train.shape[0] * (1 - val_fraction)))
-    index_train = permutation[0:size_train]
-    index_val = permutation[size_train:]
-
-    X_new_train = X_train[index_train, :]
-    X_val = X_train[index_val, :]
-
-    y_new_train = y_train[index_train]
-    y_val = y_train[index_val]
-
-    print("Done loading dataset {}".format(name))
-
+    # Compute the size of train, val, test sets
+    size_val = int(np.round(X.shape[0] * val_fraction))
+    size_test = int(np.round(X.shape[0] * test_fraction))
+    if size_test == 0 and test_fraction != 0:
+        print("Warning: For dataset %s, the test_fraction=%f but the actual test size is zero" % (name, test_fraction))
+    if size_val == 0 and val_fraction != 0:
+        print("Warning: For dataset %s, the val_fraction=%f but the actual val size is zero" % (name, val_fraction)) 
+    assert X.shape[0] - size_val - size_test >= 2, "Train data size has to be at least 2, maybe check that test_fraction=%f and val_fraction=%f sum to less than 1?" % (test_fraction, val_fraction)
+    if verbose:
+        print("Splitting into train/val/test with %d/%d/%d samples" % (X.shape[0] - size_val - size_test, size_val, size_test))
+        
+    # Normalize the data to have unit std and zero mean
     def standardize(data):
         mu = data.mean(axis=0, keepdims=1)
         scale = data.std(axis=0, keepdims=1)
@@ -108,40 +68,54 @@ def get_uci_datasets(name, split_seed=0, test_fraction=0.10, train_frac=1.0, val
 
         data = (data - mu) / scale
         return data, mu, scale
-
-    #Standardize 
-    X_new_train, x_train_mu, x_train_scale = standardize(X_new_train)
-    X_test = (X_test - x_train_mu) / x_train_scale
-    y_new_train, y_train_mu, y_train_scale = standardize(y_new_train)
-    y_test = (y_test - y_train_mu) / y_train_scale
-    X_val = (X_val - x_train_mu)/ x_train_scale
-    y_val = (y_val - y_train_mu) / y_train_scale
-
-    train = TensorDataset(
-            torch.Tensor(X_new_train).type(torch.float32),
-            torch.Tensor(y_new_train).type(torch.float32),
+    
+    # Extract the training set
+    index_train = permutation[size_val+size_test:]
+    X_train = X[index_train, :]
+    y_train = y[index_train]
+    if normalize:
+        X_train, x_train_mu, x_train_scale = standardize(X_train)
+        y_train, y_train_mu, y_train_scale = standardize(y_train)
+    else:
+        x_train_mu, y_train_mu = 0.0, 0.0
+        x_train_scale, y_train_scale = 1.0, 1.0
+    train_dataset = TensorDataset(
+        torch.Tensor(X_train).type(torch.float32),
+        torch.Tensor(y_train).type(torch.float32),
     )
-
-    val = TensorDataset(
-        torch.Tensor(X_val).type(torch.float32),
-        torch.Tensor(y_val).type(torch.float32),
-    )
-
-    test = TensorDataset(
-        torch.Tensor(X_test).type(torch.float32),
-        torch.Tensor(y_test).type(torch.float32),
-    )
-    in_size = X_train[0].shape
-    target_size = y_train[0].shape
-
-    return train, val, test, in_size, target_size, y_train_scale
+    
+    # Extract the val set is applicable
+    if size_val > 0:
+        index_val = permutation[:size_val]
+        X_val = (X[index_val, :] - x_train_mu) / x_train_scale
+        y_val = (y[index_val] - y_train_mu) / y_train_scale
+        val_dataset = TensorDataset(
+            torch.Tensor(X_val).type(torch.float32),
+            torch.Tensor(y_val).type(torch.float32),
+        )
+    else:
+        val_dataset = None
+    
+    # Extract the test set if applicable
+    if size_test > 0:
+        index_test = permutation[size_val:size_val+size_test]
+        X_test = (X[index_test, :] - x_train_mu) / x_train_scale
+        y_test = (y[index_test] - y_train_mu) / y_train_scale
+        test_dataset = TensorDataset(
+            torch.Tensor(X_test).type(torch.float32),
+            torch.Tensor(y_test).type(torch.float32),
+        )
+    else:
+        test_dataset = None
+    if verbose:
+        print("Done loading dataset {}".format(name))
+    return train_dataset, val_dataset, test_dataset # , in_size, target_size, y_train_scale
 
 
 #####################################
 # individual data files             #
 #####################################
-vb_dir = os.path.dirname(__file__)
-data_dir = os.path.join(vb_dir, "data/uci")
+_data_dir = os.path.join(os.path.dirname(__file__), "data/uci")
 
 
 def _load_boston():
@@ -179,10 +153,10 @@ def _load_powerplant():
     plant that record the ambient variables every second.
     the variables are given without normalization.
     """
-    data_file = os.path.join(data_dir, "power-plant/Folds5x2_pp.xlsx")
+    data_file = os.path.join(_data_dir, "power-plant/Folds5x2_pp.xlsx")
     data = pd.read_excel(data_file)
-    x = data.values[:, :-1]
-    y = data.values[:, -1]
+    x = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
     return x, y
 
 
@@ -205,10 +179,10 @@ def _load_concrete():
     Concrete compressive strength -- quantitative -- MPa -- Output Variable
     ---------------------------------
     """
-    data_file = os.path.join(data_dir, "concrete/Concrete_Data.xls")
+    data_file = os.path.join(_data_dir, "concrete/Concrete_Data.xls")
     data = pd.read_excel(data_file)
-    X = data.values[:, :-1]
-    y = data.values[:, -1]
+    X = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
     return X, y
 
 
@@ -225,10 +199,10 @@ def _load_yacht():
     The measured variable is the residuary resistance per unit weight of displacement:
     7. Residuary resistance per unit weight of displacement, adimensional.
     """
-    data_file = os.path.join(data_dir, "yacht/yacht_hydrodynamics.data")
-    data = pd.read_csv(data_file, delim_whitespace=True)
-    X = data.values[:, :-1]
-    y = data.values[:, -1]
+    data_file = os.path.join(_data_dir, "yacht/yacht_hydrodynamics.data")
+    data = pd.read_csv(data_file, delim_whitespace=True, header=None)
+    X = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
     return X, y
 
 
@@ -257,11 +231,11 @@ def _load_energy_efficiency():
     y1    Heating Load
     y2    Cooling Load
     """
-    data_file = os.path.join(data_dir, "energy-efficiency/ENB2012_data.xlsx")
+    data_file = os.path.join(_data_dir, "energy-efficiency/ENB2012_data.xlsx")
     data = pd.read_excel(data_file)
-    X = data.values[:, :-2]
-    y_heating = data.values[:, -2]
-    y_cooling = data.values[:, -1]
+    X = data.values[:, :-4]
+    y_heating = data.to_numpy()[:, -4]
+    y_cooling = data.to_numpy()[:, -3]  # There are two dead columns in the end, remove them here
     return X, y_cooling
 
 
@@ -284,11 +258,10 @@ def _load_wine():
     Output variable (based on sensory data):
     12 - quality (score between 0 and 10)
     """
-    # data_file = os.path.join(data_dir, 'wine-quality/winequality-red.csv')
-    data_file = os.path.join(data_dir, "wine-quality/wine_data_new.txt")
-    data = pd.read_csv(data_file, sep=" ", header=None)
-    X = data.values[:, :-1]
-    y = data.values[:, -1]
+    data_file = os.path.join(_data_dir, 'wine-quality/winequality-red.csv')
+    data = pd.read_csv(data_file, sep=";")
+    X = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
     return X, y
 
 
@@ -307,10 +280,10 @@ def _load_kin8nm():
     Output variable:
     9 - target
     """
-    data_file = os.path.join(data_dir, "kin8nm/data.txt")
-    data = np.loadtxt(data_file)
-    X = data[:, :-1]
-    y = data[:, -1]
+    data_file = os.path.join(_data_dir, 'kin8nm/dataset_2175_kin8nm.csv')
+    data = pd.read_csv(data_file)
+    X = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
     return X, y
 
 
@@ -338,10 +311,10 @@ def _load_naval():
     17 - GT Compressor decay state coefficient.
     18 - GT Turbine decay state coefficient.
     """
-    data = np.loadtxt(os.path.join(data_dir, "naval/data.txt"))
-    X = data[:, :-2]
-    y_compressor = data[:, -2]
-    y_turbine = data[:, -1]
+    data = pd.read_csv(os.path.join(_data_dir, "naval/data.txt"), delim_whitespace=True, header=None)
+    X = data.to_numpy()[:, :-2]
+    y_compressor = data.to_numpy()[:, -2]
+    y_turbine = data.to_numpy()[:, -1]
     return X, y_turbine
 
 
@@ -350,9 +323,11 @@ def _load_protein():
     Physicochemical Properties of Protein Tertiary Structure Data Set
     Abstract: This is a data set of Physicochemical Properties of Protein Tertiary Structure.
     The data set is taken from CASP 5-9. There are 45730 decoys and size varying from 0 to 21 armstrong.
-    TODO: Check that the output is correct
-    Input variables:
+
+    Output variable:
         RMSD-Size of the residue.
+        
+    Input variables:
         F1 - Total surface area.
         F2 - Non polar exposed area.
         F3 - Fractional area of exposed non polar residue.
@@ -361,129 +336,40 @@ def _load_protein():
         F6 - Average deviation from standard exposed area of residue.
         F7 - Euclidian distance.
         F8 - Secondary structure penalty.
-    Output variable:
         F9 - Spacial Distribution constraints (N,K Value).
     """
-    data_file = os.path.join(data_dir, "protein/CASP.csv")
+    data_file = os.path.join(_data_dir, "protein/CASP.csv")
     data = pd.read_csv(data_file, sep=",")
-    X = data.values[:, 1:]
-    y = data.values[:, 0]
+    X = data.to_numpy()[:, 1:]
+    y = data.to_numpy()[:, 0]
     return X, y
 
-
-def _load_song():
-    """
-    INSTRUCTIONS:
-    1) Download from http://archive.ics.uci.edu/ml/datasets/YearPredictionMSD
-    2) Place YearPredictionMSD.txt in data/uci/song/
-    Dataloader is slow since file is large.
-    YearPredictionMSD Data Set
-    Prediction of the release year of a song from audio features. Songs are mostly western, commercial tracks ranging
-    from 1922 to 2011, with a peak in the year 2000s.
-    90 attributes, 12 = timbre average, 78 = timbre covariance
-    The first value is the year (target), ranging from 1922 to 2011.
-    Features extracted from the 'timbre' features from The Echo Nest API.
-    We take the average and covariance over all 'segments', each segment
-    being described by a 12-dimensional timbre vector.
-    """
-    data = np.loadtxt(
-        os.path.join(data_dir, "song/YearPredictionMSD.txt"), delimiter=","
-    )
-    X = data[:, :-1]
-    y = data[:, -1]
-    return X, y
-
-
-def _load_depth():
-    train = h5py.File("data/depth_train_big.h5", "r")
-    test = h5py.File("data/depth_test_big.h5", "r")
-    return (train["image"], train["depth"]), (test["image"], test["depth"])
-
-
-def load_depth():
-    return _load_depth()
-
-
-def load_apollo():
-    test = h5py.File("data/apolloscape_test.h5", "r")
-    return (None, None), (test["image"], test["depth"])
-
-
-def load_flight_delay():
-
-    # Download from here: http://staffwww.dcs.shef.ac.uk/people/N.Lawrence/dataset_mirror/airline_delay/
-    data = pd.read_pickle("data/flight-delay/filtered_data.pickle")
-    y = np.array(data["ArrDelay"])
-    data.pop("ArrDelay")
-    X = np.array(data[:])
-
-    def standardize(data):
-        data -= data.mean(axis=0, keepdims=1)
-        scale = data.std(axis=0, keepdims=1)
-        data /= scale
-        return data, scale
-
-    X = X[:, np.where(data.var(axis=0) > 0)[0]]
-    X, _ = standardize(X)
-    y, y_scale = standardize(y.reshape(-1, 1))
-    y = np.squeeze(y)
-    # y_scale = np.array([[1.0]])
-
-    N = 700000
-    S = 100000
-    X_train = X[:N, :]
-    X_test = X[N : N + S, :]
-    y_train = y[:N]
-    y_test = y[N : N + S]
-
-    return (X_train, y_train), (X_test, y_test), y_scale
 
 def _load_crime():
-    reader = open(os.path.join(data_dir, 'crime/communities.data'))
+    data = pd.read_csv(os.path.join(_data_dir, 'crime/communities.data'), sep=',', header=None).iloc[:, 5:]
+    data = data.replace('?', np.nan)
+    data = data.dropna(thresh=len(data) - 100, axis=1)  # Drop any columns that have more than 100 nan
+    data = data.dropna(axis=0)  # Drop any rows that still have nan
+    X, y = data.to_numpy()[:, :-1].astype(np.float32), data.to_numpy()[:, -1].astype(np.float32)
+    return X, y
 
-    attributes = []
-    while True:
-        line = reader.readline().split(',')
-        if len(line) < 128:
-            break
-        line = ['-1' if val == '?' else val for val in line]
-        line = np.array(line[5:], dtype=np.float)
-        attributes.append(line)
-    reader.close()
 
-    attributes = np.stack(attributes, axis=0)
-
-    reader = open(os.path.join(data_dir, 'crime/communities.names'))
-    names = []
-    for i in range(128):
-        line = reader.readline().split()[1]
-        if i >= 5:
-            names.append(line)
-    names = np.array(names)
-
-    y = attributes[:, -1:]
-    attributes= attributes[:, :-1]
-    selected = np.argwhere(np.array([np.min(attributes[:, i]) for i in range(attributes.shape[1])]) >= 0).flatten()
-    print(selected)
-    print(names[selected])
-    X = attributes[:, selected]
-    return X, y.flatten()
-
+uci_regression_load_funs = {
+    "wine": _load_wine,
+    "boston": _load_boston,
+    "concrete": _load_concrete,
+    "power-plant": _load_powerplant,
+    "yacht": _load_yacht,
+    "energy-efficiency": _load_energy_efficiency,
+    "kin8nm": _load_kin8nm,
+    "naval": _load_naval,
+    "protein": _load_protein,
+    "crime": _load_crime,
+}
 
 
 if __name__ == "__main__":
-    load_funs = {
-        "wine": _load_wine,
-        "boston": _load_boston,
-        "concrete": _load_concrete,
-        "power-plant": _load_powerplant,
-        "yacht": _load_yacht,
-        "energy-efficiency": _load_energy_efficiency,
-        "kin8nm": _load_kin8nm,
-        "naval": _load_naval,
-        "protein": _load_protein,
-        "crime": _load_crime,
-    }
-    for k in load_funs:
-        X, y = load_funs[k]()
+    for k in uci_regression_load_funs:
+        X, y = uci_regression_load_funs[k]()
         print(k, X.shape)
+        print(np.isnan(X).sum(), np.isnan(y).sum())
