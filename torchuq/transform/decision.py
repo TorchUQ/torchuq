@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import itertools
 from matplotlib import pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from sklearn.isotonic import IsotonicRegression
 import torch
 import torch.nn as nn
@@ -14,15 +14,13 @@ import numpy as np
 # from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
+from .basic import Calibrator 
 
-from ..metric.decision import *
 
-
-# The critic model that take as input a probability predictor, and find the maximum discrepancy 
 class CriticDecision(nn.Module):
     def __init__(self, num_classes=1000, num_action=2):
         super(CriticDecision, self).__init__()
-        self.fc = nn.Linear(num_classes, num_action)
+        self.fc = nn.Linear(num_classes, num_action, bias=False)
         self.adjustment = nn.Parameter(torch.zeros(num_action, num_classes), requires_grad=False)  # The adjustment for examples that belong to an action and for each class 
         self.num_action = num_action
         self.num_classes = num_classes
@@ -30,145 +28,150 @@ class CriticDecision(nn.Module):
     # Input the predicted probability (array of size [batch_size, number_of_classes]), and the labels (int array of size [batch_size])
     # Learn the optimal critic function and the new recalibration adjustment 
     # norm should be 1 or 2
-    def optimize(self, predictions, labels, num_epoch=20, norm=1, writer=None):
+    def optimize(self, predictions, labels, num_epoch=20, *args, **kwargs):
         device = predictions.device
         num_classes = predictions.shape[1]
         
-        val_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(predictions.cpu(), labels.cpu()), 
-                                                 batch_size=256, shuffle=True, num_workers=2)
         critic_optim = optim.Adam(self.fc.parameters(), lr=1e-2)
+        lr_schedule = optim.lr_scheduler.StepLR(critic_optim, step_size=50, gamma=0.8)
+        
         for epoch in range(num_epoch):
-            diff_all = torch.zeros(1, self.num_action, num_classes, device=device)        # Compute the value of diff_all_{aj} = E[(Y_j - \hat{p}_j(x)) softmax(<p(x), l_a>)] 
-            diff_all_true = torch.zeros(1, self.num_action, num_classes, device=device)   # Compute the binarized loss
-            with torch.no_grad():
-                for i, data in enumerate(val_loader):
-                    bpred, blabel = data[0].to(device), data[1].to(device)
-                    diff_all += self.evaluate_soft_diff(blabel, bpred).sum(dim=0, keepdim=True)
-                    diff_all_true += self.evaluate_true_diff(blabel, bpred).sum(dim=0, keepdim=True)
-                    # self.compute_adjustment(labels, pred_prob)
-                
-                if norm == 1:
-                    diff_all = diff_all.sign()
-                    diff_all_true = -(diff_all_true / len(predictions)).abs().mean()
-                else:
-                    assert norm == 2
-                    diff_all /= len(predictions)
-                    diff_all_true = -(diff_all_true / len(predictions)).pow(2).mean()
-                    
-                if writer is not None:
-                    writer.add_scalar('loss_true', -diff_all_true.abs().mean(), writer.global_iteration)
-                
-            for i, data in enumerate(val_loader):
+            for rep in range(10):
                 critic_optim.zero_grad()
-                bpred, blabel = data[0].to(device), data[1].to(device)
-                loss = self.evaluate_soft_diff(blabel, bpred)
-                loss = -(loss * diff_all).sum() # This is to trick the autodiff into generating the gradient we want 
+                loss = -self.evaluate_soft_diff(predictions.detach(), labels.detach()).mean(dim=0, keepdim=True).pow(2).sum()
                 loss.backward()
                 critic_optim.step()
-                if writer is not None:
-                    writer.add_scalar('loss_surrogate', loss, writer.global_iteration)
             
-            if writer is not None:
-                writer.add_scalar('epoch', epoch, writer.global_iteration)
-                writer.global_iteration += 1
-            
-        # Compute the adjustment
-        counter = torch.ones(self.num_action, device=device) * 20
-        for i, data in enumerate(val_loader):
-            bpred, blabel = data[0].to(device), data[1].to(device)
-            # For each partition the critic finds, compute the probability adjustment to remove discrepancy 
-            max_action = self.forward(bpred).argmax(dim=1)
-            for action in range(self.num_action):
-                selected = (F.one_hot(blabel, num_classes=num_classes) - bpred)[max_action == action]
-                self.adjustment[action] += selected.sum(dim=0) 
-                counter[action] += len(selected)
-        self.adjustment /= counter.view(-1, 1)
-                
+            with torch.no_grad():
+                adjustment = self.evaluate_adjustment(predictions, labels)
+                self.adjustment = nn.Parameter(adjustment, requires_grad=False)
+            lr_schedule.step()
+        return loss
+    
     # For each input probability output the (relaxed) probability of taking each action
-    def forward(self, x):
-        fc = F.softmax(self.fc(x), dim=1)
+    def forward(self, predictions):
+        fc = self.fc(predictions)
+        fc = F.softmax(fc, dim=1)
         return fc
     
-    def evaluate_soft_diff(self, labels, pred_prob):
-        labels = F.one_hot(labels, num_classes=pred_prob.shape[1])  #[batch_size, num_classes]
+    def evaluate_soft_diff(self, predictions, labels):
+        labels = F.one_hot(labels, num_classes=predictions.shape[1])  #[batch_size, num_classes]
 
         # print(z.shape, labels.shape)
-        weights = self.forward(pred_prob).view(-1, self.num_action, 1)  # shape should be batch_size, number of actions, 1
-        diff = weights * (labels - pred_prob).view(-1, 1, pred_prob.shape[1])   # diff_{iaj} = y_ij - \hat{p}(x_i)_j) softmax(<p(x_i), l_a>
+        weights = self.forward(predictions).view(-1, self.num_action, 1)   # shape should be batch_size, number of actions, 1
+        diff = weights * (labels - predictions).view(-1, 1, predictions.shape[1])   # diff_{iaj} = (y_ij - \hat{p}(x_i)_j) softmax(<\hat{p}(x_i), l_a>
         return diff 
     
-    # Input the label and the prediction probability, output the true loss of the critic
-    def evaluate_true_diff(self, labels, pred_prob):
-        labels = F.one_hot(labels, num_classes=pred_prob.shape[1])  #[batch_size, 10]
+    def evaluate_adjustment(self, predictions, labels):
+        labels = F.one_hot(labels, num_classes=predictions.shape[1])  #[batch_size, num_classes]
 
-        weight_binary = F.one_hot(self.forward(pred_prob).argmax(dim=1), num_classes=self.num_action).view(-1, self.num_action, 1)
-        diff = (weight_binary * (labels - pred_prob).view(-1, 1, pred_prob.shape[1])) # disc_{iaj} = y_ij - \hat{p}_j(x_i) I(a^*(X) = a)] 
-        return diff
+        # print(z.shape, labels.shape)
+        weights = self.forward(predictions).unsqueeze(-1)   # shape should be batch_size, number of actions, 1
+        diff = weights * (labels - predictions).view(-1, 1, predictions.shape[1])   # diff_{iaj} = (y_ij - \hat{p}(x_i)_j) softmax(<\hat{p}(x_i), l_a>
+        coeff = torch.linalg.inv(torch.matmul(weights[:, :, 0].transpose(1, 0), weights[:, :, 0]))
+        return torch.matmul(coeff, diff.sum(dim=0)).unsqueeze(0) 
     
-
     
-    
-            
-            
-class CalibratorDecision():
-    def __init__(self, verbose=False, device=None, save_path=None):
+class CalibratorDecision(Calibrator):
+    def __init__(self, verbose=True, save_path=None):
+        """
+        Arguments: 
+            verbose (boolean): if set to True than print performance during training
+        """
+        super(CalibratorDecision, self).__init__()
         self.critics = []
         self.verbose = verbose
-        self.device = device
         self.save_path = save_path
         
-    def __call__(self, x, max_critic=-1):
+    def __call__(self, predictions, max_critic=-1, *args, **kwargs):
+        self._change_device(predictions)
         for index, critic in enumerate(self.critics):
-            with torch.no_grad():
-                bias = critic.adjustment[critic(x).argmax(dim=1)]
-            x = x + bias   # Don't use inplace here 
-            if index + 1 == max_critic:
+            if index == max_critic:
                 break
-        return x
-    
-    def train(self, predictions, labels, calib_steps=200, num_action=2, num_critic_epoch=50, writer=None, norm=1, test_predictions=None, test_labels=None):
-        start_time = time.time()
-        for step in range(calib_steps):
             with torch.no_grad():
-                updated_predictions = self(predictions)
-            critic = CriticDecision(num_action=num_action, num_classes=predictions.shape[1]).to(self.device)
-            critic.optimize(predictions=updated_predictions, labels=labels, num_epoch=num_critic_epoch,
-                            writer=writer, norm=norm)
-            self.critics.append(critic) 
+                bias = (critic.adjustment * critic(predictions).unsqueeze(-1)).sum(dim=1) # bias should be [batch_size, num_class]
+            predictions = predictions + bias   # Don't use inplace here!! 
+        return predictions
+            
+    def to(self, device):
+        for critic in self.critics:
+            critic.to(device)   # Critic is a subclass of nn.Module so has this method
+ 
+    def train(self, predictions, labels, calib_steps=100, num_action=2, num_critic_epoch=500, test_predictions=None, test_labels=None, *args, **kwargs):
+        """ Train the decision calibrator for calib_steps. 
+        If you call this function multiple times, this function does not erase previously trained calibration maps, and only appends additional recalibration steps
+        
+        Arguments:
+            predictions (tensor(batch_size, num_classes)): a categorical probability prediction 
+            labels (tensor(batch_size)): an array of int valued labels
+            calib_steps (int): number of calibration iterations (this is the number of iteration steps in Algorithm 2 of the paper)
+            num_critic_epoch (int): number of gradient descent steps when optimizing the worst case b in Algorithm 2 of the paper
+            test_predictions (tensor(batch_size, num_classes)): a categorical probability prediction, can be set to None if measuring test performance is not needed
+            test_labels (tensor(batch_size, num_classes)): an array of int valued labels, can be set to None if measuring test performance is not needed
+            
+        Returns:
+            recorder: a PerformanceRecord object, the measured performance 
+        """
+        
+        from torchuq.metric.decision import compute_decision_loss_random
+        from torchuq.metric.categorical import compute_accuracy
+        from torchuq.transform.utils import PerformanceRecord
+        
+        self._change_device(predictions)
+
+        start_time = time.time()
+        recorder = PerformanceRecord()
+        for step in range(calib_steps):
+            # Apply the current recalibration map to the train predictions
+            with torch.no_grad():
+                modified_predictions = self(predictions) 
+                
+            # Train the new worst case critic
+            critic = CriticDecision(num_action=num_action, num_classes=predictions.shape[1]).to(predictions.device)
+            critic.optimize(predictions=modified_predictions, labels=labels, num_epoch=num_critic_epoch)
             
             with torch.no_grad():
-                modified_prediction = self(predictions) 
-                pred_loss, true_loss = compute_decision_utility(modified_prediction.to(self.device),
-                                                                labels.to(self.device), 
-                                                                num_action=num_action)
-                accuracy = compute_accuracy(modified_prediction.to(self.device), labels.to(self.device))
+                # Evaluate train performances
+                pred_loss, true_loss = compute_decision_loss_random(modified_predictions.to(self.device), labels.to(self.device),
+                                                                    num_action=num_action, seed=0)
+                accuracy = compute_accuracy(modified_predictions.to(self.device), labels.to(self.device))
                 gap = pred_loss - true_loss
-                if writer is not None: 
-                    writer.add_scalar('true_loss', true_loss.mean(), step)
-                    writer.add_scalar('gap', gap.abs().mean(), step)
-                    writer.add_scalar('accuracy', accuracy, step)
-                    writer.add_histogram('true_loss_hist', true_loss, step)
-                    writer.add_histogram('gap_hist', gap, step)
-                if test_predictions is not None:
-                    modified_prediction = self(test_predictions) 
-                    pred_loss, true_loss = compute_decision_utility(modified_prediction.to(self.device),
-                                                                    test_labels.to(self.device), 
-                                                                    num_action=num_action)
-                    accuracy = compute_accuracy(modified_prediction.to(self.device), test_labels.to(self.device))
-                    gap = pred_loss - true_loss
-                    if writer is not None: 
-                        writer.add_scalar('true_loss_test', true_loss.mean(), step)
-                        writer.add_scalar('gap_test', gap.abs().mean(), step)
-                        writer.add_scalar('accuracy_test', accuracy, step)
-                        writer.add_histogram('true_loss_hist_test', true_loss, step)
-                        writer.add_histogram('gap_hist_test', gap, step)
+                gap_norm = critic.evaluate_soft_diff(modified_predictions, labels).mean(dim=0, keepdim=True).norm(2).sum()
                 
+                recorder.add_scalar('decision_loss_train', true_loss.mean().item(), step)
+                recorder.add_scalar('gap_train', gap.abs().mean().item(), step)
+                recorder.add_scalar('gap_max_train', gap.abs().mean().item(), step)
+                recorder.add_scalar('gap_norm_train', gap_norm.item(), step)
+                recorder.add_scalar('accuracy_train', accuracy.item(), step)
+            
+                # Evaluate test performance if applicable
+                if test_predictions is not None:
+                    modified_test_predictions = self(test_predictions) 
+                    pred_loss, true_loss = compute_decision_loss_random(modified_test_predictions.to(self.device),
+                                                                    test_labels.to(self.device), 
+                                                                    num_action=num_action, seed=0)
+                    test_accuracy = compute_accuracy(modified_test_predictions.to(self.device), test_labels.to(self.device))
+                    test_gap = pred_loss - true_loss
+                    test_gap_norm = critic.evaluate_soft_diff(modified_test_predictions, test_labels).mean(dim=0, keepdim=True).norm(2).sum() 
+                    
+                    recorder.add_scalar('decision_loss_test', true_loss.mean().item(), step)
+                    recorder.add_scalar('gap_test', test_gap.abs().mean().item(), step)
+                    recorder.add_scalar('gap_max_test', test_gap.abs().mean().item(), step)
+                    recorder.add_scalar('gap_norm_test', test_gap_norm.item(), step)
+                    recorder.add_scalar('accuracy_test', test_accuracy.item(), step)
                 if self.verbose:
-                    print("Step %d, time=%.1f" % (step, time.time() - start_time))
+                    print("Step %d, time=%.1f, on the val/test set acc=%.3f/%.3f, avg loss gap=%.4f/%.4f, gap norm=%.4f/%.4f" % 
+                          (step, time.time() - start_time, accuracy, test_accuracy, 
+                           gap.abs().mean().item(), test_gap.abs().mean().item(),
+                           gap_norm.item(), test_gap_norm.item()))
+
+            self.critics.append(critic) 
+            
             if step % 10 == 0 and self.save_path is not None:
                 self.save(os.path.join(self.save_path, 
                                        '%d-%d-%d.tar' % (predictions.shape[1], num_action, norm)))
-                
+        return recorder 
+    
     def save(self, save_path):
         if len(self.critics) == 0:
             return
@@ -188,3 +191,4 @@ class CalibratorDecision():
             critic = CriticDecision(num_action=loader['num_action'], num_classes=loader['num_classes']).to(self.device)
             critic.load_state_dict(loader[str(index)])
             self.critics.append(critic)
+
