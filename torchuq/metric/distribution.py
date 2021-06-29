@@ -2,7 +2,8 @@ import seaborn as sns
 import numpy as np
 import torch
 from matplotlib import pyplot as plt 
-
+import numpy as np
+from scipy.stats import binom
 
 def plot_cdf(predictions, labels):
     margin = (labels.max() - labels.min()) * 0.3
@@ -55,7 +56,7 @@ def compute_crps(predictions, labels, resolution=500):
     Output:
         crps: array [batch_size], the CRPS score 
     """
-    intervals = torch.linspace(0, 1, resolution+2)[1:-1].view(-1, 1)
+    intervals = torch.linspace(0, 1, resolution+2, device=labels.device)[1:-1].view(-1, 1)
     weights = (intervals ** 2)[1:] - (intervals ** 2)[:-1]   # This is a trick to compute the Lesbegue integral of CDF^2 (when we only have access to inverse CDF)
     weights = torch.cat([weights[:1], (weights[1:] + weights[:-1])/2, weights[-1:]], dim=0)   # Handle the boundary 
 
@@ -68,7 +69,7 @@ def compute_crps(predictions, labels, resolution=500):
   
 
     
-def plot_reliability_diagram(predictions, labels, ax=None, plot_confidence=True):
+def plot_reliability_diagram(predictions, labels, ax=None):
     """
     Plot the reliability diagram https://arxiv.org/abs/1807.00263 
     
@@ -76,7 +77,6 @@ def plot_reliability_diagram(predictions, labels, ax=None, plot_confidence=True)
         predictions: required Distribution instance, a batch of distribution predictions
         labels: required array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        plot_confidence: optional boolean, if set to true also plot the confidence interval. This is the range we expect the reliability diagram to fluctuate even when the predictions are perfect. 
     """
     with torch.no_grad():
         cdfs = predictions.cdf(labels).flatten() 
@@ -85,16 +85,12 @@ def plot_reliability_diagram(predictions, labels, ax=None, plot_confidence=True)
         if ax is None:
             plt.figure(figsize=(5, 5))
             ax = plt.gca() 
+            
+        # Compute confidence bound
+        min_vals = binom.ppf(0.005, len(cdfs), np.linspace(0, 1, 102)) / len(cdfs)
+        max_vals = binom.ppf(0.995, len(cdfs), np.linspace(0, 1, 102)) / len(cdfs)
+        ax.fill_between(np.linspace(0, 1, 102), min_vals, max_vals, alpha=0.1, color='C1')
 
-        # Use bootstrap to compute if the predictions are correct, what is the range of the reliability diagram 
-        # I think it is possible to compute this in closed form, but bootstrap should work well enough
-        if plot_confidence:
-            samples = torch.rand(100, len(cdfs))
-            samples, _ = torch.sort(samples, dim=1)
-            min_curve, _ = samples.min(dim=0)
-            max_curve, _ = samples.max(dim=0)
-            ax.fill_between(np.linspace(0, 1, len(cdfs)), min_curve.cpu(), max_curve.cpu(), alpha=0.1, color='C1')
-        
         ax.plot(cdfs.cpu().numpy(), np.linspace(0, 1, len(cdfs)), c='C0')
         ax.plot([0,1], [0,1], c='C1', linestyle=':')
         ax.set_xlim([0, 1])
@@ -121,9 +117,9 @@ def plot_density(predictions, labels, max_count=100, ax=None):
     density = 1. / resolution / (values[1:] - values[:-1])  # Compute the empirical density
     vpstats = [{'coords': centers[:, i].numpy(), 'vals': density[:, i].numpy(),
                 'mean': values[:, i].mean(), 'median': values[resolution // 2, i], 
-                'min': values[0, i], 'max': values[-1, i]} for i in range(len(density)) if i < max_count]
+                'min': values[0, i], 'max': values[-1, i]} for i in range(density.shape[1]) if i < max_count]
     if ax is None:
-        optimal_width = len(vpstats) / 5
+        optimal_width = len(vpstats) / 4
         if optimal_width < 4:
             optimal_width = 4
         plt.figure(figsize=(optimal_width, 4))
