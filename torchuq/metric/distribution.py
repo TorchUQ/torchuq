@@ -4,44 +4,9 @@ import torch
 from matplotlib import pyplot as plt 
 import numpy as np
 from scipy.stats import binom
+from .utils import metric_plot_colors as mcolors
 
-def plot_cdf(predictions, labels):
-    margin = (labels.max() - labels.min()) * 0.3
-    y_range = torch.linspace(labels.min() - margin, labels.max() + margin, 100)
-    with torch.no_grad():
-        cdfs = predictions.cdf(y_range.view(-1, 1))
-        label_cdfs = predictions.cdf(labels)
-    
-    
-    max_plot = cdfs.shape[1]
-    if max_plot > 50:
-        max_plot = 50
-    palette = np.array(sns.color_palette("husl", max_plot))
-    for i in range(max_plot):
-        plt.plot(y_range, cdfs[:, i], c=palette[i], alpha=0.5)
 
-    plt.scatter(labels[:max_plot], label_cdfs[:max_plot], color=palette[np.arange(max_plot)], marker='x', alpha=0.5, zorder=2)
-    plt.ylabel('cdf')
-    plt.xlabel('value')
-    
-    
-def plot_icdf(predictions, labels):
-    margin = (labels.max() - labels.min()) * 0.3
-    c_range = torch.linspace(0.01, 0.99, 100)
-    with torch.no_grad():
-        values = predictions.icdf(c_range.view(-1, 1))
-        label_cdfs = predictions.cdf(labels)
-    
-    max_plot = values.shape[1]
-    if max_plot > 50:
-        max_plot = 50
-    palette = np.array(sns.color_palette("husl", max_plot))
-    for i in range(max_plot):
-        plt.plot(values[:, i], c_range, c=palette[i], alpha=0.5)
-    
-    plt.scatter(labels[:max_plot], label_cdfs[:max_plot], color=palette[np.arange(max_plot)], marker='x', alpha=0.5, zorder=2)
-    plt.ylabel('cdf')
-    plt.xlabel('value')
     
 
 def compute_crps(predictions, labels, resolution=500):  
@@ -67,6 +32,9 @@ def compute_crps(predictions, labels, resolution=500):
     crps = (part_under + part_over).abs().sum(dim=0)   # The abs is not necessary, but placed here just in case numerical errors cause CRPS to be below zero. 
     return crps
   
+    
+def compute_nll(predictins, labels):
+    return -predictions.log_prob(labels)
 
     
 def plot_reliability_diagram(predictions, labels, ax=None):
@@ -77,6 +45,9 @@ def plot_reliability_diagram(predictions, labels, ax=None):
         predictions: required Distribution instance, a batch of distribution predictions
         labels: required array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        
+    Output:
+        ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
     with torch.no_grad():
         cdfs = predictions.cdf(labels).flatten() 
@@ -98,6 +69,7 @@ def plot_reliability_diagram(predictions, labels, ax=None):
         ax.tick_params(axis='both', which='major', labelsize=14)
         ax.set_xlabel('quantiles', fontsize=14)
         ax.set_ylabel('proportion samples below quantile', fontsize=14)
+        return ax
         
         
         
@@ -110,6 +82,9 @@ def plot_density(predictions, labels, max_count=100, ax=None):
         labels: required array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
         max_count: optional int, the maximum number of PDFs to plot
+
+    Output:
+        ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
     resolution = 100
     values = predictions.icdf(torch.linspace(0, 1, resolution+2)[1:-1].view(-1, 1)).cpu()
@@ -126,7 +101,84 @@ def plot_density(predictions, labels, max_count=100, ax=None):
         ax = plt.gca() 
         
     ax.violin(vpstats=vpstats, positions=range(len(vpstats)), showextrema=False, widths=0.7)
-    ax.scatter(range(len(vpstats)), labels[:len(vpstats)].cpu().numpy(), marker='x')
+    ax.scatter(range(len(vpstats)), labels[:len(vpstats)].cpu().numpy(), marker='x', c=mcolors['label'])
     ax.set_ylabel('label value', fontsize=14)
     ax.set_xlabel('sample index', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
+    return ax
+
+
+def plot_cdf(predictions, labels, ax=None, max_count=30, resolution=200):
+    """ 
+    Plot the CDF functions
+    
+    Input:
+        predictions: required Distribution instance, a batch of distribution predictions
+        labels: required array [batch_size], the labels
+        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        
+    Output:
+        ax: matplotlib.axes.Axes, the ax on which the plot is made
+    """
+    n_plot = len(labels)
+    if n_plot > max_count:
+        n_plot = max_count
+        
+    margin = (labels[:n_plot].max() - labels[:n_plot].min()) * 0.2   # Get the range of the plot
+    y_range = torch.linspace(labels[:n_plot].min() - margin, labels[:n_plot].max() + margin, resolution, device=labels.device)  # Get the values on which to evaluate the CDF
+    # Evaluate the CDF
+    with torch.no_grad():
+        cdfs = predictions.cdf(y_range.view(-1, 1))[:, :n_plot].cpu().numpy()
+        label_cdfs = predictions.cdf(labels)[:n_plot].cpu().numpy()
+    
+    if ax is None: 
+        plt.figure(figsize=(5, 5))
+        ax = plt.gca() 
+            
+
+    palette = np.array(sns.color_palette("husl", n_plot))
+    for i in range(n_plot):
+        plt.plot(y_range, cdfs[:, i], c=palette[i], alpha=0.5)
+
+    ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', zorder=3)
+    ax.set_ylabel('cdf', fontsize=14)
+    ax.set_xlabel('value', fontsize=14)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+    return ax
+    
+    
+def plot_icdf(predictions, labels, ax=None, max_count=30, resolution=200):
+    """
+    Plot the inverse CDF functions
+    
+    Input:
+        predictions: required Distribution instance, a batch of distribution predictions
+        labels: required array [batch_size], the labels
+        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+
+    Output:
+        ax: matplotlib.axes.Axes, the ax on which the plot is made
+    """
+    n_plot = len(labels)
+    if n_plot > max_count:
+        n_plot = max_count
+        
+    margin = (labels[:n_plot].max() - labels[:n_plot].min()) * 0.2
+    c_range = torch.linspace(0.01, 0.99, resolution, device=labels.device)
+    with torch.no_grad():
+        values = predictions.icdf(c_range.view(-1, 1))[:, :n_plot].cpu().numpy()
+        label_cdfs = predictions.cdf(labels)[:n_plot].cpu().numpy()
+    
+    if ax is None: 
+        plt.figure(figsize=(5, 5))
+        ax = plt.gca() 
+        
+    palette = np.array(sns.color_palette("husl", n_plot))
+    for i in range(n_plot):
+        plt.plot(values[:, i], c_range, c=palette[i], alpha=0.5)
+    
+    ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', alpha=0.5, zorder=2)
+    ax.set_ylabel('cdf', fontsize=14)
+    ax.set_xlabel('value', fontsize=14)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+    return ax
