@@ -15,8 +15,116 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
+import inspect
+import copy
 
 
+def _move_prediction_device(predictions, device):  
+    """
+    Move the prediction to specified device. Warning: This function may modify predictions in place
+    
+    Inputs:
+        predictions: original prediction
+        device: any torch device
+        
+    Outputs:
+        new_predictions: the prediction in the new device
+    """
+    if issubclass(type(predictions), torch.distributions.distribution.Distribution):  # Annoying trick to get the device of a torch Distribution class because there is no interface for this
+        for (name, value) in inspect.getmembers(predictions, lambda v: isinstance(v, torch.Tensor)):
+            try:
+                setattr(predictions, name, value.to(device))
+            except:   # This is a hack, some properties cannot be set because they are calculated from other properties
+                pass
+        return predictions
+    else:
+        return predictions.to(device)
+    
+    
+def _get_prediction_device(predictions):
+    """
+    Get the device of a prediction
+    
+    Inputs: 
+    """
+    if issubclass(type(predictions), torch.distributions.distribution.Distribution):
+        device = predictions.sample().device    # Annoying trick to get the device of a torch Distribution class because there is no interface for this
+    else:
+        device = predictions.device
+    return device
+
+        
+
+class ConcatDistribution():
+    """
+    Class that concat multiple classes that behave like torch.distributions.Distribution.
+    This class supports the cdf, icdf, log_prob, sample, rsample and sample_n interface, but nothing else, the interface is compatible with torch Distribution
+    This class also supports the .to(device) interface, .device attribute and batch_shape attribute
+    """
+    def __init__(self, distributions, dim=0):
+        """
+        Inputs: 
+            distributions: a list of instances that inherit the torch Distribution interface. Each instance must have a 1 dimensional batch_shape 
+            dim: dimension to concat the distributions, any dimension other than the concat dimension must have equal size
+        """
+        assert len(distributions) != 0, "Need to concat at least one distribution"
+        assert dim >= 0 and dim < len(distributions[0].batch_shape), "Concat dimension invalid"
+        
+        self.distributions = distributions
+        self.dim = dim
+        
+        # The index boundary between different batches
+        self.sizes = torch.Tensor([distribution.batch_shape[dim] for distribution in distributions]).type(torch.int)
+        self.indices = torch.cumsum(self.sizes, dim=0)  
+        
+        # Compute the batch_shape of self
+        self.batch_shape = list(distributions[0].batch_shape[:dim]) + [self.indices[-1].item()] + list(distributions[0].batch_shape[dim+1:])
+        self.device = _get_prediction_device(distributions[0])
+        
+    def cdf(self, value):
+        split_value, split_dim = self._split_input(value)
+        cdfs = [distribution.cdf(val) for val, distribution in zip(split_value, self.distributions)]  # Get the CDF value for each split
+        return torch.cat(cdfs, dim=split_dim) 
+    
+    def icdf(self, value):
+        split_value, split_dim = self._split_input(value)
+        icdfs = [distribution.icdf(val) for val, distribution in zip(split_value, self.distributions)]  # Get the CDF value for each split
+        return torch.cat(icdfs, dim=split_dim) 
+    
+    def log_prob(self, value):
+        split_value, split_dim = self._split_input(value)
+        log_probs = [distribution.log_prob(val) for val, distribution in zip(split_value, self.distributions)]  # Get the CDF value for each split
+        return torch.cat(log_probs, dim=split_dim) 
+    
+    def rsample(self, sample_shape=torch.Size([])):
+        split_dim = len(sample_shape) + self.dim 
+        return torch.cat([distribution.rsample(sample_shape) for distribution in self.distributions], dim=split_dim)
+    
+    def sample(self, sample_shape=torch.Size([])):
+        split_dim = len(sample_shape) + self.dim 
+        return torch.cat([distribution.sample(sample_shape) for distribution in self.distributions], dim=split_dim)
+    
+    def sample_n(self, n):
+        return torch.cat([distribution.sample_n(n) for distribution in self.distributions], dim=self.dim+1)
+
+    def to(self, device):
+        self.distributions = [_move_prediction_device(pred, device) for pred in self.distributions]
+        
+    def _split_input(self, value):
+        """
+        Split the input along the concatenated dimension
+        """
+        split_dim = len(value.shape) - len(self.batch_shape) + self.dim  # Which dim to split the data 
+        assert value.shape[split_dim] == self.batch_shape[self.dim] or value.shape[split_dim] == 1, \
+            "The batch_shape is %d, but the input value has batch_shape %d along the concatenated dimension" % (value.shape[split_dim], self.batch_shape[self.dim])
+        
+        if value.shape[split_dim] == 1:
+            split_value = [value.clone() for i in range(len(self.sizes))]
+        else:
+            split_value = torch.split(value, split_size_or_sections=list(self.sizes), dim=split_dim)  # Split the input value 
+        return split_value, split_dim
+    
+    
 class Calibrator:
     def __init__(self, input_type='auto'):
         """
@@ -25,22 +133,35 @@ class Calibrator:
         Input_type must be explicitly specificied when there is ambiguity
         """
         self.input_type = input_type
+        self.device = None
+    
+    def _change_device(self, predictions):
+        """ Move everything into the same device as predictions, do nothing if they are already on the same device """
+        device = _get_prediction_device(predictions)
+        # device = self.get_device(predictions)
+        if device != self.device:
+            self.device = device
+        self.to(self.device)
+        return device
+    
+    def to(self, device):
+        pass
     
     # Input an array of shape predictions=[dataset_size, num_classes], labels=[dataset_size]
     # Optionally input side features such as an array of shape [dataset_size, num_features]. Not all calibrators consider side feature when recalibrating 
-    def train(self, predictions, labels, side_features=None):
+    def train(self, predictions, labels, *args, **kwargs):
         pass
     
     # Same as train, but updates the calibrator online 
     # If half_life is not None, then it is the number of calls to this function where the sample is discounted to 1/2 weight
     # Not all calibration functions support half_life
-    def update(self, predictions, labels, side_features=None, half_life=None):
+    def update(self, predictions, labels, half_life=None):
         pass
     
     # Input an array of shape [batch_size, num_classes], output the recalibrated array
     # predictions should be in the same pytorch device 
     # If side_feature is not None when calling train, it shouldn't be None here either. 
-    def __call__(self, predictions, side_features=None):
+    def __call__(self, predictions, *args, **kwargs):
         pass
     
     def check_type(self, predictions):
@@ -50,6 +171,8 @@ class Calibrator:
             assert len(predictions.shape) == 2 and predictions.shape[1] == 2, "interval predictions should have shape [batch_size, 2]"
         elif self.input_type == 'quantile':
             assert len(predictions.shape) == 2 or (len(predictions.shape) == 3 and predictions.shape[2] == 2), "quantile predictions should have shape [batch_size, num_quantile] or [batch_size, num_quantile, 2]" 
+        elif self.input_type == 'distribution':
+            assert hasattr(connection, 'cdf') and hasattr(connection, 'icdf'), "Distribution predictions should have a cdf and icdf method"
             
     def assert_type(self, input_type, valid_types):
         msg = "Input data type not supported, input data type is %s, supported types are %s" % (input_type, " ".join(valid_types)) 
@@ -57,66 +180,5 @@ class Calibrator:
             
 
 
-class HistogramBinning:
-    def __init__(self, requires_grad=False, adaptive=True, bin_count='auto', verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
-        self.adaptive = adaptive
-        self.bin_count = bin_count
-        self.verbose = verbose
-        self.bin_boundary = None
-        self.bin_adjustment = None
-        assert not requires_grad, "Histogram binning does not support gradient with respect to HB parameters"
 
-    # side_feature is not used
-    def train(self, predictions, labels, side_feature=None):
-        with torch.no_grad():
-            # Get the maximum confidence prediction and its confidence
-            max_confidence, prediction = predictions.max(dim=1)
-            # Indicator variable for whether each top 1 prediction is correct
-            correct = (prediction == labels).type(torch.float32)
-            
-            if self.verbose:
-                print("Top-1 accuracy of predictor is %.3f" % correct.mean()) 
-            
-            # Decide the number of histogram binning bins
-            if self.bin_count == 'auto':
-                self.bin_count = int(np.sqrt(len(predictions)) / 5.)
-            if self.bin_count < 1:
-                self.bin_count = 1
-            if self.verbose:
-                print("Number of histogram binning bins is %d" % self.bin_count)
-            
-            confidence_ranking = torch.argsort(max_confidence)
-            
-            # Compute the boundary of the bins
-            indices = torch.linspace(0, len(predictions)-1, self.bin_count+1).round().type(torch.long).cpu()
-            self.bin_boundary = max_confidence[confidence_ranking].cpu()[indices] 
-            self.bin_boundary[0] = -1.0
-            self.bin_boundary[-1] = 2.0
-            if self.verbose:
-                print(self.bin_boundary)
-            
-            # Compute the adjustment for each bin
-            diff = max_confidence[confidence_ranking] - correct[confidence_ranking] 
-            self.bin_adjustment = diff.view(self.bin_count, -1).mean(dim=1)
-
-    def __call__(self, predictions, side_feature=None):
-        if self.bin_boundary is None:
-            print("Error: need to first call ConfidenceHBCalibrator.train before calling this function")
-        with torch.no_grad():
-            max_confidence, max_index = predictions.max(dim=1)
-            max_confidence = max_confidence.view(-1, 1).repeat(1, len(self.bin_boundary))
-            tiled_boundary = self.bin_boundary.to(predictions.device).view(1, -1).repeat(len(predictions), 1)
-            tiled_adjustment = self.bin_adjustment.to(predictions.device).view(1, -1).repeat(len(predictions), 1)
-            
-            index = (max_confidence < tiled_boundary).type(torch.float32)
-            index = index[:, 1:] - index[:, :-1]
-#             print(index.shape)
-            
-#             print(index.sum(dim=1))
-            adjustment = (tiled_adjustment * index).sum(dim=1)
-            # print(adjustment.shape)
-
-        predictions = predictions + adjustment.view(-1, 1) / (predictions.shape[1] - 1)
-        predictions[torch.arange(len(predictions)), max_index] -= adjustment 
-        return predictions
     
