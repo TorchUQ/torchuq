@@ -138,7 +138,7 @@ def plot_cdf(predictions, labels, ax=None, max_count=30, resolution=200):
 
     palette = np.array(sns.color_palette("husl", n_plot))
     for i in range(n_plot):
-        plt.plot(y_range, cdfs[:, i], c=palette[i], alpha=0.5)
+        ax.plot(y_range, cdfs[:, i], c=palette[i], alpha=0.5)
 
     ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', zorder=3)
     ax.set_ylabel('cdf', fontsize=14)
@@ -175,7 +175,7 @@ def plot_icdf(predictions, labels, ax=None, max_count=30, resolution=200):
         
     palette = np.array(sns.color_palette("husl", n_plot))
     for i in range(n_plot):
-        plt.plot(values[:, i], c_range, c=palette[i], alpha=0.5)
+        ax.plot(values[:, i], c_range, c=palette[i], alpha=0.5)
     
     ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', alpha=0.5, zorder=2)
     ax.set_ylabel('cdf', fontsize=14)
