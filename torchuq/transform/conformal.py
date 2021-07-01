@@ -16,6 +16,9 @@ from .basic import Calibrator, ConcatDistribution
 from ..models.flow import NafFlow
 from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_device
 
+# TODO: log_prob has not been implemented for DistributionConformalLinear
+# TODO: DistributionConformalNaf has not been tested and cleaned up
+
 class DistributionConformal:
     """
     Abstract baseclass for a distribution that arises from conformal calibration. 
@@ -36,6 +39,7 @@ class DistributionConformal:
         self.iscore = iscore_func 
         self.test_predictions = test_predictions 
         self.device = _get_prediction_device(test_predictions)
+        
         with torch.no_grad():
             self.batch_shape = self.score(test_predictions, torch.zeros(1, 1, device=self.device)).shape[1:2]  # A hack to find out the number of distributions
             
@@ -53,25 +57,31 @@ class DistributionConformal:
             self.test_predictions = _move_prediction_device(self.test_predictions, device)
             
     def cdf(self, value):
-        assert False, "Not implemented"
+        assert False, "cdf not implemented"
         
-    def icdf(self, cdf):
-        assert False, "Not implemented"
+    def icdf(self, value):
+        assert False, "icdf not implemented"
         
-    def rsample(self, sample_shape):
+    def rsample(self, sample_shape=torch.Size([])):
         """
         Draw a set of samples from the distribution
         """
         rand_vals = torch.rand(list(sample_shape) + [self.batch_shape[0]])
         return self.icdf(rand_vals.view(-1, self.batch_shape[0])).view(rand_vals.shape)
     
-    def sample(self, batch_shape=torch.Size([])):
-        pass
+    def sample(self, sample_shape=torch.Size([])):
+        return self.rsample(sample_shape)
+    
+    def sample_n(self, n):
+        return self.rsample(torch.Size([n]))
     
     def log_prob(self, value):
-        pass
+        assert False, "log_prob not implemented"
     
     def shape_inference(self, value):
+        """ 
+        Handle all unusual shapes that 
+        """
         # Enumerate all the valid input shapes for value
         if type(value) == int or type(value) == float:  
             return value.view(1, 1), self.batch_shape[0]
@@ -112,17 +122,17 @@ class DistributionConformalLinear(DistributionConformal):
         cdf = comparison.clamp(min=0, max=1).sum(dim=-1) / (len(self.val_scores) - 1)
         return cdf.view(out_shape).to(out_device) 
     
-    def icdf(self, cdf):
+    def icdf(self, value):
         """
         Get the inverse CDF
         Input:
-        - cdf: an array of shape [batch_size, n_prediction] or shape [n_prediction], each entry should take values in [0, 1]
+        - value: an array of shape [batch_size, n_prediction] or shape [n_prediction], each entry should take values in [0, 1]
         Supports automatic shape induction, e.g. if cdf has shape [batch_size, 1] it will automatically be converted to shape [batch_size, n_prediction]
         
         Output:
         The value of inverse CDF function at the queried cdf values
         """
-        cdf, out_shape = self.shape_inference(cdf)   # Convert cdf to have shape [batch_size, batch_shape]
+        cdf, out_shape = self.shape_inference(value)   # Convert cdf to have shape [batch_size, batch_shape]
         # self.to(cdf.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
         
         # Move cdf to the device of test_predictions to avoid device mismatch error
@@ -137,7 +147,7 @@ class DistributionConformalLinear(DistributionConformal):
         target_score = self.val_scores[torch.floor(quantiles).type(torch.long)] * ratio + \
             self.val_scores[torch.ceil(quantiles).type(torch.long)] * (1 - ratio) 
         value = self.iscore(self.test_predictions, target_score)
-        return value.view(out_shape)
+        return value.view(out_shape).to(out_device)  # Output the original device
 
     
 
@@ -361,7 +371,7 @@ def _conformal_iscore_particle(predictions, score):
 
     # For each interval between two adjacent samples, compute whether the score is large enough such that this interval should be added
     num_particle = sorted_pred.shape[0] 
-    interval_contribution = (score.unsqueeze(0) - torch.linspace(0, num_particle, num_particle+1)[:-2].view(-1, 1, 1)).clamp(min=0.0, max=1.0) 
+    interval_contribution = (score.unsqueeze(0) - torch.linspace(0, num_particle, num_particle+1, device=score.device)[:-2].view(-1, 1, 1)).clamp(min=0.0, max=1.0) 
     interval_value = sorted_pred.unsqueeze(1)[1:] - sorted_pred.unsqueeze(1)[:-1] # [num_particles, n_evaluations, batch_shape]
 
     # Sum up the interval that should be added, and consider the boundary case where score<0 or score>num_particle-1
@@ -370,14 +380,14 @@ def _conformal_iscore_particle(predictions, score):
     return value
     
     
-conformal_score_functions = {'point': _conformal_score_point, 'interval': _conformal_score_interval,
+_conformal_score_functions = {'point': _conformal_score_point, 'interval': _conformal_score_interval,
                             'particle': _conformal_score_particle, 'quantile': _conformal_score_quantile,
                             'distribution': _conformal_score_distribution}
-conformal_iscore_functions = {'point': _conformal_iscore_point, 'interval': _conformal_iscore_interval,
+_conformal_iscore_functions = {'point': _conformal_iscore_point, 'interval': _conformal_iscore_interval,
                              'particle': _conformal_iscore_particle, 'quantile': _conformal_iscore_quantile,
                              'distribution': _conformal_iscore_distribution} 
 
-concat_predictions = {
+_concat_predictions = {
     'point': lambda x: torch.cat(x, dim=0),
     'interval': lambda x: torch.cat(x, dim=0),
     'particle': lambda x: torch.cat(x, dim=0),
@@ -387,15 +397,17 @@ concat_predictions = {
     
 
 class ConformalCalibrator(Calibrator):
-    def __init__(self, input_type='interval', interpolation='naf'):
+    def __init__(self, input_type='interval', interpolation='linear'):
         """
-        interpolation: linear or naf 
+        Inputs:
+            input_type: str, one of the regression input types
+            interpolation: 'linear' or 'naf', the interpolation used when computing the CDF/ICDF functions, currently only linear has been fully tested  
         """
         super(ConformalCalibrator, self).__init__(input_type=input_type)
         self.predictions = []
         self.labels = []
-        if input_type not in conformal_score_functions:
-            assert False, "Input type %s not supported, supported types are %s" % (input_type, '/'.join(conformal_score_functions.keys()))
+        if input_type not in _conformal_score_functions:
+            assert False, "Input type %s not supported, supported types are %s" % (input_type, '/'.join(_conformal_score_functions.keys()))
         if interpolation == 'linear':
             self.distribution_class = DistributionConformalLinear
         else:
@@ -404,29 +416,58 @@ class ConformalCalibrator(Calibrator):
         
     def train(self, predictions, labels):
         """
-        prediction can be either: a point prediction, a confidence interval, 
+        Train the conformal calibration from scratch 
+        Inputs:
+            predictions: a batch of predictions generated by the base predictor. Must have the correct type that matches the input_type argument
+            labels: a batch of labels, must be on the same device as predictions
         """
         self.check_type(predictions)
+        self.to(predictions) 
+        
         self.predictions = [predictions]
-        self.labels = [labels]
+        self.labels = [labels.to(_get_prediction_device(predictions))]
     
     def update(self, predictions, labels):
+        """
+        Update the conformal calibrator online with new labels 
+        Inputs:
+            predictions: a batch of predictions generated by the base predictor. Must have the correct type that matches the input_type argument
+            labels: a batch of labels, must be on the same device as predictions
+        """
         self.check_type(predictions)
-        self._change_device(predictions)
+        self.to(predictions)   # Optionally change the device to the device predictions resides in
         
         self.predictions.append(predictions)
-        self.labels.append(labels)
+        self.labels.append(labels.to(_get_prediction_device(predictions)))
         
     def to(self, device):
-        """ Move every torch tensor owned by this class to a new device """
+        """ 
+        Move every torch tensor owned by this class to a new device 
+        Inputs:
+            device: a torch.device instance, alternatively it could be a torch.Tensor or a prediction object
+        """
+        if not type(device).__name__ == 'device':
+            device = _get_prediction_device(device)   # This handles the case that the input is a tensor or a prediction
         if len(self.predictions) != 0 and device != self.labels[0].device:
+            # if self.device is not None:   # If this is not the first time device is set, then issue a warning
+            #     print("Warning: device of conformal calibrator has been changed from %s to %s, this could be because the inputs had difference devices (not recommended)." % (str(self.labels[0].device), str(device)))
             self.predictions = [_move_prediction_device(pred, device) for pred in self.predictions]
             self.labels = [label.to(device) for label in self.labels]
-            
+        self.device = device 
+        
     def __call__(self, predictions):
-        self._change_device(predictions)
-        return self.distribution_class(val_predictions=concat_predictions[self.input_type](self.predictions), 
+        """ 
+        Output the calibrated probabilities given input base prediction
+        Inputs:
+            predictions: a batch of predictions generated by the base predictor. Must have the correct type that matches the input_type argument
+        Outputs:
+            results: a class that behaves like torch Distribution. The calibrated probabilities. 
+        """
+        self.check_type(predictions) 
+        self.to(predictions)
+        results = self.distribution_class(val_predictions=_concat_predictions[self.input_type](self.predictions), 
                                      val_labels=torch.cat(self.labels, dim=0),
                                      test_predictions=predictions,
-                                     score_func=conformal_score_functions[self.input_type], 
-                                     iscore_func=conformal_iscore_functions[self.input_type])
+                                     score_func=_conformal_score_functions[self.input_type], 
+                                     iscore_func=_conformal_iscore_functions[self.input_type])
+        return results

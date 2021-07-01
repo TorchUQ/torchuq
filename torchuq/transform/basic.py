@@ -15,45 +15,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
-import inspect
 import copy
+from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_device
 
 
-def _move_prediction_device(predictions, device):  
-    """
-    Move the prediction to specified device. Warning: This function may modify predictions in place
-    
-    Inputs:
-        predictions: original prediction
-        device: any torch device
-        
-    Outputs:
-        new_predictions: the prediction in the new device
-    """
-    if issubclass(type(predictions), torch.distributions.distribution.Distribution):  # Annoying trick to get the device of a torch Distribution class because there is no interface for this
-        for (name, value) in inspect.getmembers(predictions, lambda v: isinstance(v, torch.Tensor)):
-            try:
-                setattr(predictions, name, value.to(device))
-            except:   # This is a hack, some properties cannot be set because they are calculated from other properties
-                pass
-        return predictions
-    else:
-        return predictions.to(device)
-    
-    
-def _get_prediction_device(predictions):
-    """
-    Get the device of a prediction
-    
-    Inputs: 
-    """
-    if issubclass(type(predictions), torch.distributions.distribution.Distribution):
-        device = predictions.sample().device    # Annoying trick to get the device of a torch Distribution class because there is no interface for this
-    else:
-        device = predictions.device
-    return device
-
-        
 
 class ConcatDistribution():
     """
@@ -129,23 +94,22 @@ class Calibrator:
     def __init__(self, input_type='auto'):
         """
         input_type should be one of the supported datatypes
-        If input_type is 'auto' then it is automatically induced when Calibrator.train() or update() is first time called, it cannot be changed after the first call to train() or update()
-        Input_type must be explicitly specificied when there is ambiguity
+        If input_type is 'auto' then it is automatically induced when Calibrator.train() or update() is called, it cannot be changed after the first call to train() or update()
+        Input_type must be explicitly specificied for many subclasses
         """
         self.input_type = input_type
         self.device = None
     
-    def _change_device(self, predictions):
-        """ Move everything into the same device as predictions, do nothing if they are already on the same device """
-        device = _get_prediction_device(predictions)
-        # device = self.get_device(predictions)
-        if device != self.device:
-            self.device = device
-        self.to(self.device)
-        return device
+#     def _change_device(self, predictions):
+#         """ Move everything into the same device as predictions, do nothing if they are already on the same device """
+#         device = _get_prediction_device(predictions)
+#         # device = self.get_device(predictions)
+#         self.to(device)
+#         self.device = device
+#         return device
     
     def to(self, device):
-        pass
+        assert False, "Calibrator.to has not been implemented"
     
     # Input an array of shape predictions=[dataset_size, num_classes], labels=[dataset_size]
     # Optionally input side features such as an array of shape [dataset_size, num_features]. Not all calibrators consider side feature when recalibrating 
@@ -172,7 +136,7 @@ class Calibrator:
         elif self.input_type == 'quantile':
             assert len(predictions.shape) == 2 or (len(predictions.shape) == 3 and predictions.shape[2] == 2), "quantile predictions should have shape [batch_size, num_quantile] or [batch_size, num_quantile, 2]" 
         elif self.input_type == 'distribution':
-            assert hasattr(connection, 'cdf') and hasattr(connection, 'icdf'), "Distribution predictions should have a cdf and icdf method"
+            assert hasattr(predictions, 'cdf') and hasattr(predictions, 'icdf'), "Distribution predictions should have a cdf and icdf method"
             
     def assert_type(self, input_type, valid_types):
         msg = "Input data type not supported, input data type is %s, supported types are %s" % (input_type, " ".join(valid_types)) 
