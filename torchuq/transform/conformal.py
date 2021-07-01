@@ -12,59 +12,75 @@ from torch.optim import lr_scheduler
 import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
-from .basic import Calibrator 
+from .basic import Calibrator, ConcatDistribution
 from ..models.flow import NafFlow
-
+from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_device
 
 class DistributionConformal:
     """
     Abstract baseclass for a distribution that arises from conformal calibration. 
     This class behaves like torch.distribution.Distribution, and supports the cdf, icdf and rsample functions. 
-    
-    score_func is a function that take as input a batched predictions q, and an array v of values with shape [n_values, batch_shape] 
-    returns an array s of shape [n_values, batch_shape] where s_{ij} is the score of v_{ij} under prediction q_j 
-    
-    iscore_func is a function that take as input a batched prediction q, and an array s os scores with shape [n_values, batch_shape] 
-    returns an array v of shape [n_values, batch_shape]  which is the inverse of score_func (i.e. iscore_func(q, score_func(q, v)) = v)
     """
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func):
+        """
+        Inputs:
+            val_predictions: a set of validation predictions, the type must be compatible with score_func 
+            val_labels: array [validation_batch_shape], a batch of labels
+            test_predictions: a set of test predictions, the type must be compatible with score func
+            score_func: non-conformity score function. A function that take as input a batched predictions q, and an array v of values with shape [n_evaluations, batch_shape] 
+            returns an array s of shape [n_evaluations, batch_shape] where s_{ij} is the score of v_{ij} under prediction q_j 
+            iscore_func: inverse non-conformity score function: a function that take as input a batched prediction q, and an array s os scores with shape [n_evaluations, batch_shape] 
+            returns an array v of shape [n_evaluations, batch_shape] which is the inverse of score_func (i.e. iscore_func(q, score_func(q, v)) = v)
+        """
         self.score = score_func 
         self.iscore = iscore_func 
         self.test_predictions = test_predictions 
-        self.device = test_predictions.device
+        self.device = _get_prediction_device(test_predictions)
         with torch.no_grad():
-            self.batch_shape = self.score(test_predictions, torch.zeros(1, 1, device=test_predictions.device)).shape[1]  # A hack to find out the number of distributions
+            self.batch_shape = self.score(test_predictions, torch.zeros(1, 1, device=self.device)).shape[1:2]  # A hack to find out the number of distributions
             
             # Compute the scores for all the predictions in the validation set and sort them from small to large
-            val_scores = self.score(val_predictions, val_labels.view(1, -1)).flatten().sort()[0]
+            val_scores = self.score(val_predictions, val_labels.view(1, -1)).flatten().sort()[0] 
             # Prepend the 0 quantile and append the 1 quantile for convenient handling of boundary conditions
             self.val_scores = torch.cat([val_scores[:1] - (val_scores[1:] - val_scores[:-1]).mean(dim=0, keepdims=True), 
                                          val_scores, 
                                          val_scores[-1:] + (val_scores[1:] - val_scores[:-1]).mean(dim=0, keepdims=True)])   
+    
+    def to(self, device):
+        if self.device != device:
+            self.device = device
+            self.val_scores = self.val_scores.to(device)
+            self.test_predictions = _move_prediction_device(self.test_predictions, device)
             
     def cdf(self, value):
         assert False, "Not implemented"
         
     def icdf(self, cdf):
-        assert False, "Nor implemented"
+        assert False, "Not implemented"
         
     def rsample(self, sample_shape):
         """
         Draw a set of samples from the distribution
         """
-        rand_vals = torch.rand(list(sample_shape) + [self.batch_shape])
-        return self.icdf(rand_vals.view(-1, self.batch_shape)).view(rand_vals.shape)
+        rand_vals = torch.rand(list(sample_shape) + [self.batch_shape[0]])
+        return self.icdf(rand_vals.view(-1, self.batch_shape[0])).view(rand_vals.shape)
+    
+    def sample(self, batch_shape=torch.Size([])):
+        pass
+    
+    def log_prob(self, value):
+        pass
     
     def shape_inference(self, value):
         # Enumerate all the valid input shapes for value
-        if type(value) == int or type(value) == float:
-            return value.view(1, 1), [self.batch_shape]
-        elif len(value.shape) == 1 and value.shape[0] == 1:
-            return value.view(1, 1), [self.batch_shape]
-        elif len(value.shape) == 1 and value.shape[0] == self.batch_shape:
-            return value.view(1, -1), [self.batch_shape]
+        if type(value) == int or type(value) == float:  
+            return value.view(1, 1), self.batch_shape[0]
+        elif len(value.shape) == 1 and value.shape[0] == 1:  # If the value is 1-D it must be either 1 or equal to batch_shape[0]
+            return value.view(1, 1), self.batch_shape[0]
+        elif len(value.shape) == 1 and value.shape[0] == self.batch_shape[0]:   # If the value is 1-D it must be either 1 or equal to batch_shape[0]
+            return value.view(1, -1), self.batch_shape[0]
         elif len(value.shape) == 2:
-            return value, [len(value), self.batch_shape]
+            return value, [len(value), self.batch_shape[0]]
         else:
             assert False, "Shape [%s] invalid" % ', '.join([str(shape) for shape in value.shape])
     
@@ -77,14 +93,15 @@ class DistributionConformalLinear(DistributionConformal):
         """
         The CDF at value
         Input:
-        - value: an array of shape [val_batch_size, batch_shape] or shape [batch_size] 
+        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_size] 
         """
-        # First perform automatic shape induction and convert value into an array of shape [batch_size, batch_shape]
+        # First perform automatic shape induction and convert value into an array of shape [n_evaluations, batch_shape]
         value, out_shape = self.shape_inference(value)
+        # self.to(value.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
         
         # Move value to the device of test_predictions to avoid device mismatch error
         out_device = value.device
-        value = value.to(self.test_predictions)
+        value = value.to(self.device)
         
         # Non-conformity score
         scores = self.score(self.test_predictions, value)
@@ -106,18 +123,23 @@ class DistributionConformalLinear(DistributionConformal):
         The value of inverse CDF function at the queried cdf values
         """
         cdf, out_shape = self.shape_inference(cdf)   # Convert cdf to have shape [batch_size, batch_shape]
+        # self.to(cdf.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
         
-        # Move value to the device of test_predictions to avoid device mismatch error
+        # Move cdf to the device of test_predictions to avoid device mismatch error
         out_device = cdf.device
-        cdf = cdf.to(self.test_predictions)
+        cdf = cdf.to(self.device)
+        
+#         out_device = cdf.device
+#         cdf = cdf.to(self.test_predictions)
         
         quantiles = cdf * (len(self.val_scores) - 1)
         ratio = torch.ceil(quantiles) - quantiles
         target_score = self.val_scores[torch.floor(quantiles).type(torch.long)] * ratio + \
             self.val_scores[torch.ceil(quantiles).type(torch.long)] * (1 - ratio) 
         value = self.iscore(self.test_predictions, target_score)
-        return value.view(out_shape).to(out_device)
+        return value.view(out_shape)
 
+    
 
 class DistributionConformalNAF(DistributionConformal):
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func, verbose=True):
@@ -156,99 +178,165 @@ class DistributionConformalNAF(DistributionConformal):
         return value.view(out_shape)
     
     
-class DistributionConcat:
+def _conformal_score_point(predictions, values):
     """
-    Class that concat multiple classes that behave like torch.distributions.Distribution (but only the cdf, icdf and rsample interface are implemented)
+    Compute the non-conformity score of a set of values under some baseline predictor 
+    Input:
+        predictions: array [batch_shape], a batch of point predictions
+        values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
+        
+    Output:
+        score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
-    def __init__(self, predictions):
-        self.predictions = predictions
-        self.batch_shapes = torch.tensor([0] + [prediction.batch_shape[0] for prediction in predictions])
-        self.batch_shapes = torch.cumsum(self.batch_shapes, dim=0)
-        self.batch_shape = torch.Size([self.batch_shapes[-1]])
-
-    def cdf(self, value):
-        return torch.cat([prediction.cdf(value[..., self.batch_shapes[i]:self.batch_shapes[i+1]]) for i, prediction in enumerate(self.predictions)], dim=-1)
-    
-    def icdf(self, value):
-        return torch.cat([prediction.icdf(value[..., self.batch_shapes[i]:self.batch_shapes[i+1]]) for i, prediction in enumerate(self.predictions)], dim=-1)
-    
-    def rsample(self, sample_shape):
-        return torch.cat([prediction.rsample(sample_shape) for prediction in enumerate(self.predictions)], dim=-1)
-    
-    
-    
-def conformal_score_point(predictions, values):
     return values - predictions.view(1, -1)
 
-def conformal_iscore_point(predictions, score):
+def _conformal_iscore_point(predictions, score):
+    """
+    Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
+    The goal is that conformal_iscore_quantile(predictions, conformal_score_quantile(predictions, labels))) = labels
+    
+    Input:
+        predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
+        score: array [n_evaluations, batch_shape]
+        
+    Output:
+        value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
+    """
     return predictions.view(1, -1) + score
 
-def conformal_score_interval(predictions, values):
-    return (values - predictions.min(dim=0, keepdims=True)[0]) / (predictions[:, 1:2] - predictions[:, 0:1]).abs()
-    
-def conformal_iscore_interval(predictions, score):
-    return predictions.min(dim=0, keepdims=True)[0] + score * (predictions[:, 1:2] - predictions[:, 0:1]).abs()
-    
-def conformal_score_quantile(predictions, values):
-    if len(predictions.shape) == 2:
-        sorted_quantile = torch.linspace(0, 1, predictions.shape[1]+2, device=predictions.device)[1:-1].view(-1, 1)
-        sorted_pred, _ = torch.sort(predictions.transpose(1, 0), dim=0)
-    else:
-        sorted_quantile, _ = torch.sort(predictions[:, :, 1].transpose(1, 0), dim=0)
-        sorted_pred, _ = torch.sort(predictions[:, :, 0].transpose(1, 0), dim=0)
+def _conformal_score_interval(predictions, values):
+    """
+    Compute the non-conformity score of a set of values under some baseline predictor 
+    Input:
+        predictions: array [batch_shape, 2], a batch of interval predictions
+        values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
         
-    sorted_pred = sorted_pred.unsqueeze(1)  # [num_quantiles, 1, batch_shape]
+    Output:
+        score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
+    """
+    return (values - predictions.min(dim=1, keepdims=True)[0].permute(1, 0)) / (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0)
+    
+def _conformal_iscore_interval(predictions, score):
+    """
+    Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
+    The goal is that conformal_iscore_quantile(predictions, conformal_score_quantile(predictions, labels))) = labels
+    
+    Input:
+        predictions: array [batch_size, 2], a batch of interval predictions
+        score: array [n_evaluations, batch_shape]
+        
+    Output:
+        value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
+    """
+    return predictions.min(dim=1, keepdims=True)[0].permute(1, 0) + score * (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0)
+    
+
+
+def _conformal_score_quantile(predictions, values):
+    """
+    Compute the non-conformity score of a set of values under some baseline predictor 
+    Input:
+        predictions: array [batch_shape, n_quantiles] or [batch_shape, n_quantiles, 2], a batch of quantile predictions
+        values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
+        
+    Output:
+        score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
+    """
+    if len(predictions.shape) == 2:
+        # sorted_quantile = torch.linspace(0, 1, predictions.shape[1]+2, device=predictions.device)[1:-1].view(-1, 1)
+        sorted_quantile = _implicit_quantiles(predictions.shape[1]).to(predictions.device).view(1, -1)  
+        sorted_pred, _ = torch.sort(predictions, dim=1)
+    else:
+        sorted_quantile, _ = torch.sort(predictions[:, :, 1], dim=1)   # [batch_shape, num_quantiles]
+        sorted_pred, _ = torch.sort(predictions[:, :, 0], dim=1)
+        
+    sorted_quantile = sorted_quantile.permute(1, 0) # [num_quantiles, batch_shape] This is needed because torch Distribution has different convention from torchuq
+    sorted_pred = sorted_pred.permute(1, 0).unsqueeze(1)  # [num_quantiles, 1, batch_shape]
     quantile_gap = (sorted_quantile[1:] - sorted_quantile[:-1]).unsqueeze(1) # [num_quantiles-1, 1, batch_shape]
     
-    # print('quantile_gap', quantile_gap.shape)
     # The score is equal to how many quantiles the value exceeds
-    score = (values.unsqueeze(0) - sorted_pred[:-1]) / (sorted_pred[1:] - sorted_pred[:-1])
-    score = sorted_quantile[0] + (score.clamp(min=0.0, max=1.0)  * quantile_gap).sum(dim=0)   # If value exceeds all samples, its score so far is num_particle-1
+    score = (values.unsqueeze(0) - sorted_pred[:-1]) / (sorted_pred[1:] - sorted_pred[:-1])   # [num_quantiles-1, n_evaluations, batch_shape]
+    score = sorted_quantile[:1] + (score.clamp(min=0.0, max=1.0) * quantile_gap).sum(dim=0)   # If value exceeds all samples, its score so far is num_particle-1, [n_evaluations, batch_shape]
 
     # Also consider values that are below the smallest sample or greater than the largest sample
     # A value has score <0 iff it is less than the smallest sample, and score >1 iff it is greater than the largest sample
     score = score + (values - sorted_pred[0]).clamp(max=0.0) + (values - sorted_pred[-1]).clamp(min=0.0) 
-    # print('score', score.shape)
     return score
 
-def conformal_iscore_quantile(predictions, score):
-    if len(predictions.shape) == 2:
-        sorted_quantile = torch.linspace(0, 1, predictions.shape[1]+2, device=predictions.device)[1:-1].view(-1, 1)
-        sorted_pred, _ = torch.sort(predictions.transpose(1, 0), dim=0)
-    else:
-        sorted_quantile, _ = torch.sort(predictions[:, :, 1].transpose(1, 0), dim=0)
-        sorted_pred, _ = torch.sort(predictions[:, :, 0].transpose(1, 0), dim=0)
+def _conformal_iscore_quantile(predictions, score):
+    """
+    Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
+    The goal is that conformal_iscore_quantile(predictions, conformal_score_quantile(predictions, labels))) = labels
     
-    sorted_quantile = sorted_quantile.unsqueeze(1) # [num_quantiles, batch_size, batch_shape]
-    pred_gap = (sorted_pred[1:] - sorted_pred[:-1]).unsqueeze(1)
+    Input:
+        predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
+        score: array [n_evaluations, batch_shape]
+        
+    Output:
+        value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
+    """
+    if len(predictions.shape) == 2:
+        # sorted_quantile = torch.linspace(0, 1, predictions.shape[1]+2, device=predictions.device)[1:-1].view(-1, 1)
+        sorted_quantile = _implicit_quantiles(predictions.shape[1]).to(predictions.device).view(1, -1)    # [1, n_quantiles]
+        sorted_pred, _ = torch.sort(predictions, dim=1)  # [batch_shape, n_quantiles]
+    else:
+        sorted_quantile, _ = torch.sort(predictions[:, :, 1], dim=1)   
+        sorted_pred, _ = torch.sort(predictions[:, :, 0], dim=1)
+    
+    sorted_pred = sorted_pred.permute(1, 0)  # [n_quantiles, batch_shape]
+    sorted_quantile = sorted_quantile.permute(1, 0).unsqueeze(1) # [n_quantiles, 1, batch_shape]
+    pred_gap = (sorted_pred[1:] - sorted_pred[:-1]).unsqueeze(1)  # [num_quantiles-1, 1, batch_shape]
     
     # For each interval between two adjacent samples, compute whether the score is large enough such that this interval should be added
-    value = (score.unsqueeze(0) - sorted_quantile[:-1]) / (sorted_quantile[1:] - sorted_quantile[:-1])
-    value = sorted_pred[:1] + (value.clamp(min=0.0, max=1.0) * pred_gap).sum(dim=0) 
+    value = (score.unsqueeze(0) - sorted_quantile[:-1]) / (sorted_quantile[1:] - sorted_quantile[:-1])  # [n_quantiles, n_evaluation, batch_shape]
+    value = sorted_pred[:1] + (value.clamp(min=0.0, max=1.0) * pred_gap).sum(dim=0) # [n_evaluation, batch_shape] 
     
     # Sum up the interval that should be added, and consider the boundary case where score<0 or score>num_particle-1
     value = value + (score - sorted_quantile[0]).clamp(max=0.0) + (score - sorted_quantile[-1]).clamp(min=0.0) 
     return value
 
-def conformal_score_distribution(predictions, values):
+def _conformal_score_distribution(predictions, values):
+    """
+    Compute the non-conformity score of a set of values under some baseline predictor 
+    Input:
+        predictions: an instance that behaves like torch Distribution 
+        values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
+        
+    Output:
+        score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
+    """
     return predictions.cdf(values)
 
-def conformal_iscore_distribution(predictions, score):
+def _conformal_iscore_distribution(predictions, score):
+    """
+    Compute the inverse of the non-conformity score defined in conformal_score_distribution.
+    The goal is that conformal_iscore_distribution(predictions, conformal_score_distribution(predictions, labels))) = labels
+    
+    Input:
+        predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
+        score: array [n_evaluations, batch_shape]
+        
+    Output:
+        value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
+    """
     return predictions.icdf(score)
 
-def conformal_score_particle(predictions, values):
+def _conformal_score_particle(predictions, values):
     """
-    predictions is an array of shape [num_particles, batch_shape]
-    values is an array of shape [batch_size, batch_shape]
-
-    Return the inverse of the score as an array of shape [batch_size, batch_shape]
+    Compute the non-conformity score of a set of values under some baseline predictor 
+    Input:
+        predictions: array [batch_size, n_particles], a batch of particle predictions
+        values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
+        
+    Output:
+        score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
     # print(predictions.shape, values.shape)
-    sorted_pred, _ = torch.sort(predictions, dim=0)  
-    sorted_pred = sorted_pred.unsqueeze(1)  # [num_particles, batch_size, batch_shape]
+    sorted_pred = torch.sort(predictions, dim=1)[0].permute(1, 0)  
+    sorted_pred = sorted_pred.unsqueeze(1)  # [num_particles, 1, batch_shape]
 
     # The score is equal to how many samples the value exceeds 
-    score = (values.unsqueeze(0) - sorted_pred[:-1]) / (sorted_pred[1:] - sorted_pred[:-1])
+    score = (values.unsqueeze(0) - sorted_pred[:-1]) / (sorted_pred[1:] - sorted_pred[:-1] + 1e-10)
     score = score.clamp(min=0.0, max=1.0).sum(dim=0)   # If value exceeds all samples, its score so far is num_particle-1
 
     # Also consider values that are below the smallest sample or greater than the largest sample
@@ -257,38 +345,44 @@ def conformal_score_particle(predictions, values):
     return score
     
     
-def conformal_iscore_particle(predictions, score):
+def _conformal_iscore_particle(predictions, score):
     """
-    predictions is an array of shape [num_particles, batch_shape]
-    score is an array of shape [batch_size, batch_shape]
-
-    Return the inverse of the score as an array of shape [batch_size, batch_shape]
-    """
-    sorted_pred, _ = torch.sort(predictions, dim=0)
+    Compute the inverse of the non-conformity score defined in conformal_score_distribution.
+    The goal is that conformal_iscore_distribution(predictions, conformal_score_distribution(predictions, labels))) = labels
+    
+    Input:
+        predictions: array [batch_size, n_particles], a batch of particle predictions
+        score: array [n_evaluations, batch_shape]
         
+    Output:
+        value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
+    """
+    sorted_pred = torch.sort(predictions, dim=1)[0].permute(1, 0)
+
     # For each interval between two adjacent samples, compute whether the score is large enough such that this interval should be added
     num_particle = sorted_pred.shape[0] 
     interval_contribution = (score.unsqueeze(0) - torch.linspace(0, num_particle, num_particle+1)[:-2].view(-1, 1, 1)).clamp(min=0.0, max=1.0) 
-    interval_value = sorted_pred.unsqueeze(1)[1:] - sorted_pred.unsqueeze(1)[:-1] # [num_particles, batch_size, batch_shape]
+    interval_value = sorted_pred.unsqueeze(1)[1:] - sorted_pred.unsqueeze(1)[:-1] # [num_particles, n_evaluations, batch_shape]
 
     # Sum up the interval that should be added, and consider the boundary case where score<0 or score>num_particle-1
     value = sorted_pred[:1] + score.clamp(max=0.0) + (score - num_particle+1).clamp(min=0.0) + \
         (interval_value * interval_contribution).sum(dim=0)
     return value
     
-conformal_score_functions = {'point': conformal_score_point, 'interval': conformal_score_interval,
-                            'particle': conformal_score_particle, 'quantile': conformal_score_quantile,
-                            'distribution': conformal_score_distribution}
-conformal_iscore_functions = {'point': conformal_iscore_point, 'interval': conformal_iscore_interval,
-                             'particle': conformal_iscore_particle, 'quantile': conformal_iscore_quantile,
-                             'distribution': conformal_iscore_distribution} 
+    
+conformal_score_functions = {'point': _conformal_score_point, 'interval': _conformal_score_interval,
+                            'particle': _conformal_score_particle, 'quantile': _conformal_score_quantile,
+                            'distribution': _conformal_score_distribution}
+conformal_iscore_functions = {'point': _conformal_iscore_point, 'interval': _conformal_iscore_interval,
+                             'particle': _conformal_iscore_particle, 'quantile': _conformal_iscore_quantile,
+                             'distribution': _conformal_iscore_distribution} 
 
 concat_predictions = {
-    'point': lambda x: torch.cat(x, dim=-1),
-    'interval': lambda x: torch.cat(x, dim=-1),
-    'particle': lambda x: torch.cat(x, dim=-1),
-    'quantile': lambda x: torch.cat(x, dim=-1),
-    'distribution': lambda x: DistributionConcat(x)
+    'point': lambda x: torch.cat(x, dim=0),
+    'interval': lambda x: torch.cat(x, dim=0),
+    'particle': lambda x: torch.cat(x, dim=0),
+    'quantile': lambda x: torch.cat(x, dim=0),
+    'distribution': lambda x: ConcatDistribution(x)
 }
     
 
@@ -318,15 +412,21 @@ class ConformalCalibrator(Calibrator):
     
     def update(self, predictions, labels):
         self.check_type(predictions)
+        self._change_device(predictions)
+        
         self.predictions.append(predictions)
         self.labels.append(labels)
         
+    def to(self, device):
+        """ Move every torch tensor owned by this class to a new device """
+        if len(self.predictions) != 0 and device != self.labels[0].device:
+            self.predictions = [_move_prediction_device(pred, device) for pred in self.predictions]
+            self.labels = [label.to(device) for label in self.labels]
+            
     def __call__(self, predictions):
+        self._change_device(predictions)
         return self.distribution_class(val_predictions=concat_predictions[self.input_type](self.predictions), 
                                      val_labels=torch.cat(self.labels, dim=0),
                                      test_predictions=predictions,
                                      score_func=conformal_score_functions[self.input_type], 
                                      iscore_func=conformal_iscore_functions[self.input_type])
-
-
-    
