@@ -4,10 +4,18 @@ import torch
 from matplotlib import pyplot as plt 
 import numpy as np
 from scipy.stats import binom
+from torch.nn import functional as F
 from .utils import metric_plot_colors as mcolors
-
+from .. import _get_prediction_device, _implicit_quantiles
 
     
+def compute_all(predictions, labels, resolution=500):
+    results_all = {}
+    results_all['crps'] = compute_crps(predictions, labels, resolution)
+    results_all['std'] = compute_std(predictions, resoluion)
+    results_all['nll'] = compute_nll(predictions, labels)
+    return results_all 
+
 
 def compute_crps(predictions, labels, resolution=500):  
     """
@@ -16,7 +24,7 @@ def compute_crps(predictions, labels, resolution=500):
     Input:
         predictions: a batch of distribution predictions
         labels: array [batch_size] of labels
-        resolution: the discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
+        resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
         
     Output:
         crps: array [batch_size], the CRPS score 
@@ -36,6 +44,65 @@ def compute_crps(predictions, labels, resolution=500):
 def compute_nll(predictins, labels):
     return -predictions.log_prob(labels)
 
+
+def compute_std(predictions, resolution=500):
+    """ 
+    Compute the standard deviation of the predictions
+    
+    Inputs:
+        predictions: a batch of distribution predictions
+        resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
+    
+    Outputs:
+        std: array [batch_size], the standard deviation
+    """
+    quantiles = _implicit_quantiles(resolution) 
+    samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
+    return (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
+
+
+def compute_ece(predictions, labels, debiased=False):
+    """
+    Compute the ECE score as in https://arxiv.org/abs/1807.00263 
+    
+    Note that this function has biased gradient because of the non-differentiable nature of sorting. 
+    
+    Input:
+        predictions: a batch of distribution predictions
+        labels: array [batch_size] of labels
+        debiased: if debiased=True then the finite sample bias is removed. If the labels are truely drawn from the predictions, the this function will in expectation return 0. 
+        
+    Output:
+        crps: array [], the ECE score
+    """
+    cdfs = predictions.cdf(labels).flatten() 
+    ranking = torch.argsort(cdfs)
+    cdfs = cdfs[ranking]  # Manually sort so that at least this part is always differentiable 
+    ece = (cdfs - _implicit_quantiles(len(labels)).to(labels.device)).abs().mean()
+
+    if debiased:
+        n_sample = 1000
+        comparison_samples = torch.sort(torch.rand(n_sample, len(labels)), dim=1)[0] - _implicit_quantiles(len(labels)).view(1, -1) # The empirical ECE score if the predictions are perfect 
+        baseline_ece = comparison_samples.abs().mean()
+        ece = ece - baseline_ece
+    return ece
+
+
+def compute_mean(predictions, resolution=500):
+    """ 
+    Compute the mean of the predictions
+    
+    Inputs:
+        predictions: a batch of distribution predictions
+        resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
+    
+    Outputs:
+        std: array [batch_size], the mean of the predictions
+    """
+    quantiles = _implicit_quantiles(resolution) 
+    samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
+    return samples.mean(dim=0)
+    
     
 def plot_reliability_diagram(predictions, labels, ax=None):
     """
@@ -73,7 +140,8 @@ def plot_reliability_diagram(predictions, labels, ax=None):
         
         
         
-def plot_density(predictions, labels, max_count=100, ax=None):
+        
+def plot_density(predictions, labels, max_count=100, ax=None, resolution=100, smooth_bw=0):
     """ 
     Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
@@ -82,14 +150,23 @@ def plot_density(predictions, labels, max_count=100, ax=None):
         labels: required array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
         max_count: optional int, the maximum number of PDFs to plot
-
+        smooth_bw: optional int, smooth the PDF with a uniform kernel whose bandwidth is smooth_bw / resolution
     Output:
         ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
-    resolution = 100
-    values = predictions.icdf(torch.linspace(0, 1, resolution+2)[1:-1].view(-1, 1)).cpu()
-    centers = (values[1:] + values[:-1]) * 0.5
-    density = 1. / resolution / (values[1:] - values[:-1])  # Compute the empirical density
+    values = predictions.icdf(torch.linspace(0, 1, resolution+2)[1:-1].view(-1, 1)).cpu()  # [n_quantiles, batch_shape]
+    centers = (values[1:] + values[:-1]) * 0.5  
+    interval = values[1:] - values[:-1] 
+    
+    # Smooth the interval values, this is to ensure that non-smooth CDFs can be plotted nicely
+    if smooth_bw != 0:
+        interval = F.conv1d(torch.cat([interval[:smooth_bw], interval, interval[-smooth_bw:]], dim=0).permute(1, 0).unsqueeze(1), 
+                            weight=torch.ones(1, 1, smooth_bw*2+1, device=interval.device)).squeeze(1).permute(1, 0)
+    density = 1. / resolution / interval   # Compute the empirical density
+#     np.set_printoptions(suppress=True)
+#     print(values[:, 0])
+#     print(density[:, 0].numpy())
+#     print(values.max(), values.min())
     vpstats = [{'coords': centers[:, i].numpy(), 'vals': density[:, i].numpy(),
                 'mean': values[:, i].mean(), 'median': values[resolution // 2, i], 
                 'min': values[0, i], 'max': values[-1, i]} for i in range(density.shape[1]) if i < max_count]
@@ -101,7 +178,7 @@ def plot_density(predictions, labels, max_count=100, ax=None):
         ax = plt.gca() 
         
     ax.violin(vpstats=vpstats, positions=range(len(vpstats)), showextrema=False, widths=0.7)
-    ax.scatter(range(len(vpstats)), labels[:len(vpstats)].cpu().numpy(), marker='x', c=mcolors['label'])
+    ax.scatter(range(len(vpstats)), labels[:len(vpstats)].cpu().numpy(), marker='x')
     ax.set_ylabel('label value', fontsize=14)
     ax.set_xlabel('sample index', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
@@ -138,7 +215,7 @@ def plot_cdf(predictions, labels, ax=None, max_count=30, resolution=200):
 
     palette = np.array(sns.color_palette("husl", n_plot))
     for i in range(n_plot):
-        ax.plot(y_range, cdfs[:, i], c=palette[i], alpha=0.5)
+        ax.plot(y_range.cpu().numpy(), cdfs[:, i], c=palette[i], alpha=0.5)
 
     ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', zorder=3)
     ax.set_ylabel('cdf', fontsize=14)
@@ -175,7 +252,7 @@ def plot_icdf(predictions, labels, ax=None, max_count=30, resolution=200):
         
     palette = np.array(sns.color_palette("husl", n_plot))
     for i in range(n_plot):
-        ax.plot(values[:, i], c_range, c=palette[i], alpha=0.5)
+        ax.plot(values[:, i], c_range.cpu().numpy(), c=palette[i], alpha=0.5)
     
     ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', alpha=0.5, zorder=2)
     ax.set_ylabel('cdf', fontsize=14)
