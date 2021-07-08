@@ -13,10 +13,10 @@ from torch.utils.data import random_split, DataLoader, TensorDataset
 from sklearn.datasets import load_boston
 
 
-uci_regression_names = ["blog", "boston", "concrete", "crime", "energy-efficiency", "kin8nm", "mpg", "naval", "power-plant", "protein", "superconductivity", "wine", "yacht"]
-regression_names = uci_regression_names + ["kin8nm", "medical-expenditure"]
-            
-def get_regression_datasets(name, val_fraction = 0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
+dataset_names_uci = ["blog", "boston", "concrete", "crime", "energy-efficiency", "mpg", "naval", "power-plant", "protein", "superconductivity", "wine", "yacht"]
+dataset_names = dataset_names_uci + ["kin8nm", "medical-expenditure"]
+
+def get_regression_datasets(name, val_fraction=0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
     r"""
     Returns a UCI regression dataset in the form of numpy arrays.
     

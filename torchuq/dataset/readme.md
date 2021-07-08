@@ -9,19 +9,22 @@ To access UCI regression datasets use the function `get_uci_regression_datasets`
 The returned dataset is a subclass of `torch.utils.data.Dataset` so you can immediately use them in the pytorch training pipeline. If you do not want to split out the test dataset (or val dataset) then set test_fraction (or val_fraction) to 0. The function will return ``None`` instead of a `Dataset` class. 
 
 The available datasets include: 
-[wine](https://archive.ics.uci.edu/ml/datasets/wine+quality)
+[blog](https://archive.ics.uci.edu/ml/datasets/BlogFeedback)
 [boston](https://www.kaggle.com/heptapod/uci-ml-datasets) 
 [concrete](https://archive.ics.uci.edu/ml/datasets/concrete+compressive+strength)
-[power-plant](https://archive.ics.uci.edu/ml/datasets/Combined+Cycle+Power+Plant) 
-[yacht](https://archive.ics.uci.edu/ml/datasets/yacht+hydrodynamics)
-[energy-efficiency](https://archive.ics.uci.edu/ml/datasets/energy+efficiency)
-[naval](https://archive.ics.uci.edu/ml/datasets/Condition+Based+Maintenance+of+Naval+Propulsion+Plants)
-[protein](https://archive.ics.uci.edu/ml/datasets/Physicochemical+Properties+of+Protein+Tertiary+Structure)
 [crime](http://archive.ics.uci.edu/ml/datasets/communities+and+crime)
+[energy-efficiency](https://archive.ics.uci.edu/ml/datasets/energy+efficiency)
+[mpg](https://archive.ics.uci.edu/ml/datasets/auto+mpg)
+[naval](https://archive.ics.uci.edu/ml/datasets/Condition+Based+Maintenance+of+Naval+Propulsion+Plants)
+[power-plant](https://archive.ics.uci.edu/ml/datasets/Combined+Cycle+Power+Plant) 
+[protein](https://archive.ics.uci.edu/ml/datasets/Physicochemical+Properties+of+Protein+Tertiary+Structure)
+[superconductivity](https://archive.ics.uci.edu/ml/datasets/superconductivty+data)
+[wine](https://archive.ics.uci.edu/ml/datasets/wine+quality)
+[yacht](https://archive.ics.uci.edu/ml/datasets/yacht+hydrodynamics)
 
 Some datasets are not in the UCI repository, but for convenience we include them under the same interface
 [kin8nm](https://www.openml.org/d/189) 
-
+[medical-expenditure](https://meps.ahrq.gov/data_stats/download_data_files.jsp)
 
 
 ## Skin Legion classification 
