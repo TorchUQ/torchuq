@@ -388,12 +388,27 @@ def _load_medical_expenditure():
     reader = np.load(os.path.join(_data_dir, 'medical-expenditure/meps_data.npz'))
     return reader['X'], reader['y']
 
+
+def _load_forest_fires():
+    data = pd.read_csv(os.path.join(_data_dir, 'uci/forest-fires/forestfires.csv'))
+    data.isnull().values.any()
+    month = pd.get_dummies(data.month, prefix='origin') 
+    data = data.drop(['month', 'day'], axis=1).join(month)
+
+    y = data['area'].to_numpy().astype(np.float)
+    y = np.log(1 + y)  # Because the dataset is skewed toward zero, transform it by log (1+x) (same as original paper)
+    data = data.drop('area', axis=1)
+    X = data.to_numpy()[:, :-1].astype(np.float)
+    return X, y
+
+
 regression_load_funs = {
     "blog": _load_blog_feedback, 
     "boston": _load_boston,
     "concrete": _load_concrete,
     "crime": _load_crime,
     "energy-efficiency": _load_energy_efficiency,
+    "forest-fires": _load_forest_fires, 
     "kin8nm": _load_kin8nm,
     "medical-expenditure": _load_medical_expenditure, 
     "mpg": _load_mpg, 
