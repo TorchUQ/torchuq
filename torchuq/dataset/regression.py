@@ -13,8 +13,9 @@ from torch.utils.data import random_split, DataLoader, TensorDataset
 from sklearn.datasets import load_boston
 
 
-dataset_names_uci = ["blog", "boston", "concrete", "crime", "energy-efficiency", "mpg", "naval", "power-plant", "protein", "superconductivity", "wine", "yacht"]
+dataset_names_uci = ["blog", "boston", "concrete", "crime", "energy-efficiency", "fb-comment1", "fb-comment2", "forest-fires", "mpg", "naval", "power-plant", "protein", "superconductivity", "wine", "yacht"]
 dataset_names = dataset_names_uci + ["kin8nm", "medical-expenditure"]
+
 
 def get_regression_datasets(name, val_fraction=0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
     r"""
@@ -402,12 +403,30 @@ def _load_forest_fires():
     return X, y
 
 
+def _load_facebook_comment1():
+    data = pd.read_csv(os.path.join(_data_dir, 'uci/facebook/Features_Variant_1.csv'), header=None)
+    X = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
+    y = np.log(1 + y)
+    return X, y
+
+
+def _load_facebook_comment2():
+    data = pd.read_csv(os.path.join(_data_dir, 'uci/facebook/Features_Variant_2.csv'), header=None)
+    X = data.to_numpy()[:, :-1]
+    y = data.to_numpy()[:, -1]
+    y = np.log(1 + y)
+    return X, y
+
+
 regression_load_funs = {
     "blog": _load_blog_feedback, 
     "boston": _load_boston,
     "concrete": _load_concrete,
     "crime": _load_crime,
     "energy-efficiency": _load_energy_efficiency,
+    "fb-comment1": _load_facebook_comment1,
+    "fb-comment2": _load_facebook_comment2,
     "forest-fires": _load_forest_fires, 
     "kin8nm": _load_kin8nm,
     "medical-expenditure": _load_medical_expenditure, 
