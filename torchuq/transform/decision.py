@@ -14,7 +14,8 @@ import numpy as np
 # from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
-from .basic import Calibrator 
+from .basic import Calibrator   # Note can use from .basic import Calibrator
+from .. import _get_prediction_device
 
 
 class CriticDecision(nn.Module):
@@ -75,7 +76,7 @@ class CriticDecision(nn.Module):
 class CalibratorDecision(Calibrator):
     def __init__(self, verbose=True, save_path=None):
         """
-        Arguments: 
+        Inputs: 
             verbose (boolean): if set to True than print performance during training
         """
         super(CalibratorDecision, self).__init__()
@@ -84,20 +85,30 @@ class CalibratorDecision(Calibrator):
         self.save_path = save_path
         
     def __call__(self, predictions, max_critic=-1, *args, **kwargs):
-        self._change_device(predictions)
+        self.to(predictions)
         for index, critic in enumerate(self.critics):
             if index == max_critic:
                 break
             with torch.no_grad():
                 bias = (critic.adjustment * critic(predictions).unsqueeze(-1)).sum(dim=1) # bias should be [batch_size, num_class]
             predictions = predictions + bias   # Don't use inplace here!! 
-        return predictions
+        return predictions.clamp(min=1e-7, max=1-1e-7)
             
     def to(self, device):
-        for critic in self.critics:
-            critic.to(device)   # Critic is a subclass of nn.Module so has this method
- 
-    def train(self, predictions, labels, calib_steps=100, num_action=2, num_critic_epoch=500, test_predictions=None, test_labels=None, *args, **kwargs):
+        """ 
+        Move every torch tensor owned by this class to a new device 
+        Inputs:
+            device: a torch.device instance, alternatively it could be a torch.Tensor or a prediction object
+        """
+        if not type(device).__name__ == 'device':
+            device = _get_prediction_device(device)   # This handles the case that the input is a tensor or a prediction
+        if self.device is None or self.device != device:
+            for critic in self.critics:
+                critic.to(device)   # Critic is a subclass of nn.Module so has this method
+            self.device = device
+        return self 
+    
+    def train(self, predictions, labels, calib_steps=100, num_action=2, num_critic_epoch=500, test_predictions=None, test_labels=None, seed=0, *args, **kwargs):
         """ Train the decision calibrator for calib_steps. 
         If you call this function multiple times, this function does not erase previously trained calibration maps, and only appends additional recalibration steps
         
@@ -108,6 +119,7 @@ class CalibratorDecision(Calibrator):
             num_critic_epoch (int): number of gradient descent steps when optimizing the worst case b in Algorithm 2 of the paper
             test_predictions (tensor(batch_size, num_classes)): a categorical probability prediction, can be set to None if measuring test performance is not needed
             test_labels (tensor(batch_size, num_classes)): an array of int valued labels, can be set to None if measuring test performance is not needed
+            seed: float, the random seed when measuring performance
             
         Returns:
             recorder: a PerformanceRecord object, the measured performance 
@@ -117,8 +129,9 @@ class CalibratorDecision(Calibrator):
         from torchuq.metric.categorical import compute_accuracy
         from torchuq.transform.utils import PerformanceRecord
         
-        self._change_device(predictions)
-
+        self.to(predictions)
+        labels = labels.to(self.device)
+        
         start_time = time.time()
         recorder = PerformanceRecord()
         for step in range(calib_steps):
@@ -132,37 +145,53 @@ class CalibratorDecision(Calibrator):
             
             with torch.no_grad():
                 # Evaluate train performances
-                pred_loss, true_loss = compute_decision_loss_random(modified_predictions.to(self.device), labels.to(self.device),
-                                                                    num_action=num_action, seed=0)
-                accuracy = compute_accuracy(modified_predictions.to(self.device), labels.to(self.device))
+                pred_loss, true_loss = compute_decision_loss_random(modified_predictions, labels, num_action=num_action, seed=seed)
+                accuracy = compute_accuracy(modified_predictions, labels)
                 gap = pred_loss - true_loss
                 gap_norm = critic.evaluate_soft_diff(modified_predictions, labels).mean(dim=0, keepdim=True).norm(2).sum()
                 
                 recorder.add_scalar('decision_loss_train', true_loss.mean().item(), step)
                 recorder.add_scalar('gap_train', gap.abs().mean().item(), step)
-                recorder.add_scalar('gap_max_train', gap.abs().mean().item(), step)
+                recorder.add_scalar('gap_max_train', gap.abs().max().item(), step)
                 recorder.add_scalar('gap_norm_train', gap_norm.item(), step)
                 recorder.add_scalar('accuracy_train', accuracy.item(), step)
             
                 # Evaluate test performance if applicable
                 if test_predictions is not None:
-                    modified_test_predictions = self(test_predictions) 
-                    pred_loss, true_loss = compute_decision_loss_random(modified_test_predictions.to(self.device),
-                                                                    test_labels.to(self.device), 
-                                                                    num_action=num_action, seed=0)
-                    test_accuracy = compute_accuracy(modified_test_predictions.to(self.device), test_labels.to(self.device))
-                    test_gap = pred_loss - true_loss
-                    test_gap_norm = critic.evaluate_soft_diff(modified_test_predictions, test_labels).mean(dim=0, keepdim=True).norm(2).sum() 
-                    
-                    recorder.add_scalar('decision_loss_test', true_loss.mean().item(), step)
-                    recorder.add_scalar('gap_test', test_gap.abs().mean().item(), step)
-                    recorder.add_scalar('gap_max_test', test_gap.abs().mean().item(), step)
-                    recorder.add_scalar('gap_norm_test', test_gap_norm.item(), step)
-                    recorder.add_scalar('accuracy_test', test_accuracy.item(), step)
+                    if issubclass(type(test_predictions), dict):   # This is for evaluating with multiple testing data
+                        for pred_type in test_predictions.keys():
+                            modified_test_predictions = self(test_predictions[pred_type]) 
+                            cur_test_labels = test_labels[pred_type].to(self.device)
+                            pred_loss, true_loss = compute_decision_loss_random(modified_test_predictions, cur_test_labels, 
+                                                                                num_action=num_action, seed=seed)
+                            test_accuracy = compute_accuracy(modified_test_predictions, cur_test_labels)
+                            test_gap = pred_loss - true_loss
+                            test_gap_norm = critic.evaluate_soft_diff(modified_test_predictions, cur_test_labels).mean(dim=0, keepdim=True).norm(2).sum() 
+
+                            recorder.add_scalar('decision_loss_test_%s' % pred_type, true_loss.mean().item(), step)
+                            recorder.add_scalar('gap_test_%s' % pred_type, test_gap.abs().mean().item(), step)
+                            recorder.add_scalar('gap_max_test_%s' % pred_type, test_gap.abs().max().item(), step)
+                            recorder.add_scalar('gap_norm_test_%s' % pred_type, test_gap_norm.item(), step)
+                            recorder.add_scalar('accuracy_test_%s' % pred_type, test_accuracy.item(), step)                            
+                    else:
+                        modified_test_predictions = self(test_predictions) 
+                        test_labels = test_labels.to(self.device)
+                        pred_loss, true_loss = compute_decision_loss_random(modified_test_predictions, test_labels, 
+                                                                        num_action=num_action, seed=seed)
+                        test_accuracy = compute_accuracy(modified_test_predictions, test_labels)
+                        test_gap = pred_loss - true_loss
+                        test_gap_norm = critic.evaluate_soft_diff(modified_test_predictions, test_labels).mean(dim=0, keepdim=True).norm(2).sum() 
+
+                        recorder.add_scalar('decision_loss_test', true_loss.mean().item(), step)
+                        recorder.add_scalar('gap_test', test_gap.abs().mean().item(), step)
+                        recorder.add_scalar('gap_max_test', test_gap.abs().max().item(), step)
+                        recorder.add_scalar('gap_norm_test', test_gap_norm.item(), step)
+                        recorder.add_scalar('accuracy_test', test_accuracy.item(), step)
                 if self.verbose:
-                    print("Step %d, time=%.1f, on the val/test set acc=%.3f/%.3f, avg loss gap=%.4f/%.4f, gap norm=%.4f/%.4f" % 
+                    print("Step %d, time=%.1f, on the val/test set acc=%.3f/%.3f, avg loss gap=%.4f/%.4f, max loss gap=%.4f/%.4f, gap norm=%.4f/%.4f" % 
                           (step, time.time() - start_time, accuracy, test_accuracy, 
                            gap.abs().mean().item(), test_gap.abs().mean().item(),
+                           gap.abs().max().item(), test_gap.abs().max().item(),
                            gap_norm.item(), test_gap_norm.item()))
 
             self.critics.append(critic) 

@@ -15,11 +15,69 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
-import copy
+import copy, math
+print(__name__)
 from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_device
 
 
-
+class DistributionBase:
+    """
+    Abstract baseclass for a distribution that arises from conformal calibration. 
+    This class behaves like torch.distribution.Distribution, and supports the cdf, icdf and rsample functions. 
+    """
+    def __init__(self):
+        pass
+        
+    def to(self, device):
+        assert False, "to not implemented" 
+        
+    def cdf(self, value):
+        assert False, "cdf not implemented"
+        
+    def icdf(self, value):
+        assert False, "icdf not implemented"
+        
+    def rsample(self, sample_shape=torch.Size([])):
+        """
+        Draw a set of samples from the distribution
+        """
+        rand_vals = torch.rand(list(sample_shape) + [self.batch_shape[0]])
+        return self.icdf(rand_vals.view(-1, self.batch_shape[0])).view(rand_vals.shape)
+    
+    def sample(self, sample_shape=torch.Size([])):
+        return self.rsample(sample_shape)
+    
+    def sample_n(self, n):
+        return self.rsample(torch.Size([n]))
+    
+    def log_prob(self, value):
+        """
+        Compute the log probability. This default implementation is not great as it is numerically unstable and require tricks to not throw faults. 
+        """
+#         # Get the shape 
+#         shape = e
+#         eps = self.test_std * 1e-3   # Use the same unit as the std 
+#         if len(values) == 0:
+        eps = 1e-4
+        return torch.log(self.cdf(value + eps) - self.cdf(value) + 1e-10) - math.log(eps)
+    
+    def shape_inference(self, value):
+        """ 
+        Handle all unusual shapes that 
+        """
+        # Enumerate all the valid input shapes for value
+        if type(value) == int or type(value) == float:  
+            return value.view(1, 1), self.batch_shape[0]
+        elif len(value.shape) == 1 and value.shape[0] == 1:  # If the value is 1-D it must be either 1 or equal to batch_shape[0]
+            return value.view(1, 1), self.batch_shape[0]
+        elif len(value.shape) == 1 and value.shape[0] == self.batch_shape[0]:   # If the value is 1-D it must be either 1 or equal to batch_shape[0]
+            return value.view(1, -1), self.batch_shape[0]
+        elif len(value.shape) == 2:
+            return value, [len(value), self.batch_shape[0]]
+        else:
+            assert False, "Shape [%s] invalid" % ', '.join([str(shape) for shape in value.shape])
+    
+    
 class ConcatDistribution():
     """
     Class that concat multiple classes that behave like torch.distributions.Distribution.
@@ -100,33 +158,46 @@ class Calibrator:
         self.input_type = input_type
         self.device = None
     
-#     def _change_device(self, predictions):
-#         """ Move everything into the same device as predictions, do nothing if they are already on the same device """
-#         device = _get_prediction_device(predictions)
-#         # device = self.get_device(predictions)
-#         self.to(device)
-#         self.device = device
-#         return device
+    def _change_device(self, predictions):
+        """ Move everything into the same device as predictions, do nothing if they are already on the same device """
+        print("_change_device is deprecated ")
+        device = _get_prediction_device(predictions)
+        # device = self.get_device(predictions)
+        self.to(device)
+        self.device = device
+        return device
+    
     
     def to(self, device):
+        """ 
+        Move every torch tensor owned by this class to a new device 
+        Inputs:
+            device: a torch.device instance, alternatively it could be a torch.Tensor or a prediction object
+        """
         assert False, "Calibrator.to has not been implemented"
     
-    # Input an array of shape predictions=[dataset_size, num_classes], labels=[dataset_size]
-    # Optionally input side features such as an array of shape [dataset_size, num_features]. Not all calibrators consider side feature when recalibrating 
+
     def train(self, predictions, labels, *args, **kwargs):
-        pass
+        """   
+        Input:
+            predictions: a batched prediction object, the shape must batch the input_type argument 
+            labels: array [batch_size]
+        Output: 
+            self: returns the calibrator itself, and an optional log object
+        """
+        assert False, "Calibrator.train has not been implemented"
     
     # Same as train, but updates the calibrator online 
     # If half_life is not None, then it is the number of calls to this function where the sample is discounted to 1/2 weight
     # Not all calibration functions support half_life
     def update(self, predictions, labels, half_life=None):
-        pass
+        assert False, "Calibrator.update has not been implemented"
     
     # Input an array of shape [batch_size, num_classes], output the recalibrated array
     # predictions should be in the same pytorch device 
     # If side_feature is not None when calling train, it shouldn't be None here either. 
     def __call__(self, predictions, *args, **kwargs):
-        pass
+        assert False, "Calibrator.__call__ has not been implemented"
     
     def check_type(self, predictions):
         if self.input_type == 'point':

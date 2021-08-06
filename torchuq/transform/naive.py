@@ -1,16 +1,12 @@
 import torch
 from torch.distributions.normal import Normal 
-
-
-def _implicit_quantiles(n_quantiles):
-    # Induce the implicit quantiles, these quantiles should be equally spaced 
-    quantiles = torch.linspace(0, 1, n_quantiles+1)
-    quantiles = (quantiles[1:] - quantiles[1] * 0.5)
-    return quantiles 
+from .utils import BisectionInverse
+from .. import _implicit_quantiles, _check_valid, _parse_name
+from ..metric.distribution import compute_mean, compute_std, plot_density
 
 
 def distribution_to_particle(predictions, n_particles=50):
-    
+    return predictions.sample_n(n_particles).permute(1, 0)
 
 
 def distribution_to_quantile(predictions, quantiles=None, n_quantiles=None):
@@ -29,6 +25,18 @@ def distribution_to_quantile(predictions, quantiles=None, n_quantiles=None):
     
     return results
     
+    
+def distribution_to_point(predictions, functional='mean'):
+    """
+    Convert a probability distribution to a point prediction 
+    Input:
+        functional: can be mean or median
+    """
+    assert functional == 'mean' or functional == 'median'
+    if functional == 'mean':
+        return predictions.icdf(_implicit_quantiles(100).view(-1, 1)).mean(dim=0)
+    else:
+        return predictions.icdf(0.5)
 
 
 def distribution_to_interval(predictions, confidence=0.95):
@@ -47,8 +55,6 @@ def distribution_to_interval(predictions, confidence=0.95):
             r_start = queried_values[min(best_ind + 1, 99)]
     c_start = (l_start + r_start) / 2.
     return predictions.icdf(torch.tensor([c_start, c_start+confidence]).view(-1, 1)).transpose(1, 0)
-
-
 
 
 class DistributionKDE:
@@ -73,6 +79,8 @@ class DistributionKDE:
         self.normals = Normal(loc=loc, scale=scale)
         self.min_search = (loc - 10 * scale).min()
         self.max_search = (loc + 10 * scale).max()
+        self.device = self.loc.device
+        self.batch_shape = loc.shape[0]
         
     def cdf(self, value):
         """
@@ -95,39 +103,41 @@ class DistributionKDE:
             
         return torch.logsumexp(log_prob + (1e-10 + weight).log(), dim=-1)
     
-    def icdf(self, val):
-        # Use vectorized bisection to find the inverse 
-        with torch.no_grad():
-            dummy = self.cdf(val)   # Only a trick to get the right shape of the output tensor 
-            current_lb = torch.ones_like(dummy) * self.min_search   # Initialize the upper and lower search interval
-            current_ub = torch.ones_like(dummy) * self.max_search 
-            for _ in range(50):
-                mid_point = (current_lb + current_ub) / 2
-                cdfs = self.cdf(mid_point)
-
-                current_ub = current_ub * (cdfs < val) + mid_point * (cdfs >= val)   # If the CDF value is greater than the target value, shrink the upper bound
-                current_lb = current_lb * (cdfs >= val) + mid_point * (cdfs < val)   # If the CDF value is smaller than the target value, shrink the upper bound
-            icdf = (current_ub + current_lb) / 2
-            
-        # The exciting part: to generate the right gradients this function has different forward and backward computations
-        # This is quite clumsy, but it seems that otherwise mixture of Gaussians do not have a analytical ICDF function, so it's unclear how to do this otherwise
+    def icdf(self, value):
+        return BisectionInverse(self.cdf, min_search=self.min_search, max_search=self.max_search)(value)
         
-#         icdf_copy = Variable(icdf, requires_grad=True)
-#         grad_output = self.cdf(icdf_copy)
+#         # Use vectorized bisection to find the inverse 
+#         with torch.no_grad():
+#             dummy = self.cdf(val)   # Only a trick to get the right shape of the output tensor 
+#             current_lb = torch.ones_like(dummy) * self.min_search   # Initialize the upper and lower search interval
+#             current_ub = torch.ones_like(dummy) * self.max_search 
+#             for _ in range(50):
+#                 mid_point = (current_lb + current_ub) / 2
+#                 cdfs = self.cdf(mid_point)
+
+#                 current_ub = current_ub * (cdfs < val) + mid_point * (cdfs >= val)   # If the CDF value is greater than the target value, shrink the upper bound
+#                 current_lb = current_lb * (cdfs >= val) + mid_point * (cdfs < val)   # If the CDF value is smaller than the target value, shrink the upper bound
+#             icdf = (current_ub + current_lb) / 2
             
-#         manual_grad = grad(outputs=grad_output, inputs=icdf_copy,
-#                            create_graph=True, retain_graph=True)[0]
-        return icdf
+#         # The exciting part: to generate the right gradients this function has different forward and backward computations
+#         # This is quite clumsy, but it seems that otherwise mixture of Gaussians do not have a analytical ICDF function, so it's unclear how to do this otherwise
+        
+# #         icdf_copy = Variable(icdf, requires_grad=True)
+# #         grad_output = self.cdf(icdf_copy)
+            
+# #         manual_grad = grad(outputs=grad_output, inputs=icdf_copy,
+# #                            create_graph=True, retain_graph=True)[0]
+#         return icdf
                 
     
 def quantile_to_distribution(predictions, bandwidth_ratio=2.5):
     """
     Inputs:
-        predictions: 
-        bandwidth_ratio: float, the bandwidth of the kernel density estimator (relative to the average quantile distance). The default value of 2.5 generates reasonable results. 
+        predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
+        bandwidth_ratio: float, the bandwidth of the kernel density estimator (relative to the average distance between quantiles). 
         
     Outputs:
-        out_predictions: torch Distribution class, the converted predictions
+        results: torch Distribution class, the converted predictions
     """
     if len(predictions.shape) == 2:
         quantiles = _implicit_quantiles(predictions.shape[1]).view(1, -1).to(predictions.device)
@@ -144,10 +154,60 @@ def quantile_to_distribution(predictions, bandwidth_ratio=2.5):
     # print(weight)
     
     distance_neighbor = (predictions[:, 1:] - predictions[:, :-1]).abs().mean(dim=1) * bandwidth_ratio  
-    return DistributionKDE(predictions, distance_neighbor.view(-1, 1).repeat(1, predictions.shape[1]), weight=weight)
+    results = DistributionKDE(predictions, distance_neighbor.view(-1, 1).repeat(1, predictions.shape[1]), weight=weight)
+    return results
 
 
 def particle_to_distribution(predictions, bandwidth_ratio=2.5):
     """
     """
-    pass
+    return quantile_to_distribution(particle_to_quantile(predictions))
+
+
+def particle_to_quantile(predictions):
+    """
+    Maintains the ordering of the quantiles (e.g. so the 10% quantile is always smaller than the 20% quantiles)
+    Not fully differentiable because of the sorting operation involved. Should be thought of as a permutation function 
+    
+    Input: 
+        predictions: array [batch_size, n_particles], a batch of particle predictions
+    """
+    return torch.sort(predictions, dim=1)[0]
+
+
+def ensemble_to_distribution(predictions):
+    """ Convert an ensemble prediction to a single distribution. This is based on the conversion scheme in https://papers.nips.cc/paper/2017/file/9ef2ed4b7fd2c810847ffa5fa85bce38-Paper.pdf
+    
+    Input:
+        predictions: an ensemble prediction 
+    """ 
+    _check_valid(predictions, 'ensemble')
+    means = []
+    sigmas = []
+    for key in predictions:
+        pred_type, pred_name = _parse_name(key)
+        pred_component = predictions[key]   
+
+        # First convert any type of prediction to a distribution prediction 
+        if pred_type == 'quantile':
+            pred_component = quantile_to_distribution(pred_component)
+        elif pred_type == 'particle':
+            pred_component = quantile_to_distribution(particle_to_quantile(pred_component))
+        elif pred_type == 'distribution':
+            pass
+        else:
+            print("Warning in ensemble_to_distribution, cannot convert a %s prediciton to a distribution, it has been ignored" % pred_type)
+            continue
+            
+        # Compute the mean and std of the distribution prediction 
+        means.append(compute_mean(pred_component))
+        sigmas.append(compute_std(pred_component))
+            
+    assert len(means) > 0, "Error in ensemble_to_distribution, there is no valid prediction in the ensemble to use"
+    means = torch.stack(means, dim=0)
+    sigmas = torch.stack(sigmas, dim=0)
+    
+    mean_combined = means.mean(dim=0)
+    sigma_combined = ((sigmas.pow(2) + means.pow(2)).mean(dim=0) - mean_combined.pow(2)).pow(0.5)
+    return Normal(loc=mean_combined, scale=sigma_combined)
+

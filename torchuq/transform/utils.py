@@ -28,8 +28,9 @@ class PerformanceRecord:
 class BisectionInverse:
     """ Given a monotonic function forward_func, computes its inverse with bisection. 
     This function is differentiable if the forward_func is differentiable and has invertiable gradients
+    The forward_func should be defined on [min_search, max_search] 
     """
-    def __init__(self, forward_func, min_search=-1.0, max_search=1.0):
+    def __init__(self, forward_func, min_search=-1e5, max_search=1e5):
         """
         Inputs: 
         forward_func: a function that take as input a tensor [...] and outputs a tensor [...] with the same size as the input. 
@@ -74,7 +75,7 @@ class BisectionInverse:
             grad = 1. / grad.data   
             
             # If the original function is not invertible (up to numerical precisions), then set nan values to 0 and issue a warning
-            isnan = torch.isnan(grad)
+            isnan = torch.isnan(grad) | torch.isinf(grad)
             if isnan.sum() != 0:
                 if not self.warning:
                     print("Warning: non-differentiable function encountered in BisectionInverse. The gradient is inf. It has been replaced with 0. This might happen multiple times, but only one warning will be issued.")
