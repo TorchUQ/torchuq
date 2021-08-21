@@ -6,14 +6,15 @@ import numpy as np
 from scipy.stats import binom
 from torch.nn import functional as F
 from .utils import metric_plot_colors as mcolors
-from .. import _get_prediction_device, _implicit_quantiles
+from .. import _get_prediction_device, _implicit_quantiles, _get_prediction_batch_shape
 
     
 def compute_all(predictions, labels, resolution=500):
     results_all = {}
     results_all['crps'] = compute_crps(predictions, labels, resolution)
-    results_all['std'] = compute_std(predictions, resoluion)
+    results_all['std'] = compute_std(predictions, resolution)
     results_all['nll'] = compute_nll(predictions, labels)
+    results_all['ece'] = compute_ece(predictions, labels, debiased=True)
     return results_all 
 
 
@@ -41,7 +42,7 @@ def compute_crps(predictions, labels, resolution=500):
     return crps
   
     
-def compute_nll(predictins, labels):
+def compute_nll(predictions, labels):
     return -predictions.log_prob(labels)
 
 
@@ -61,9 +62,44 @@ def compute_std(predictions, resolution=500):
     return (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
 
 
+def compute_mean(predictions, resolution=500):
+    """ 
+    Compute the mean of the predictions
+    
+    Inputs:
+        predictions: a batch of distribution predictions
+        resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
+    
+    Outputs:
+        mean: array [batch_size], the mean of the predictions
+    """
+    quantiles = _implicit_quantiles(resolution) 
+    samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
+    return samples.mean(dim=0)
+    
+    
+def compute_mean_std(predictions, resolution=500):
+    """ 
+    Same as compute_mean and compute_std, but combines into one function for better efficiency
+    
+    Inputs:
+        predictions: a batch of distribution predictions
+        resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
+    
+    Outputs:
+        mean: array [batch_size], the mean of the predictions
+        std: array [batch_size], the std of the predictions
+    """
+    quantiles = _implicit_quantiles(resolution) 
+    samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
+    return samples.mean(dim=0), (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
+
+    
+_baseline_ece_cache = {}   # Cache for the ECE baselines. Because bootstrap is expensive, use cache to store the results and not recompute
+
 def compute_ece(predictions, labels, debiased=False):
     """
-    Compute the ECE score as in https://arxiv.org/abs/1807.00263 
+    Compute the (weighted) ECE score as in https://arxiv.org/abs/1807.00263 
     
     Note that this function has biased gradient because of the non-differentiable nature of sorting. 
     
@@ -81,28 +117,17 @@ def compute_ece(predictions, labels, debiased=False):
     ece = (cdfs - _implicit_quantiles(len(labels)).to(labels.device)).abs().mean()
 
     if debiased:
-        n_sample = 1000
-        comparison_samples = torch.sort(torch.rand(n_sample, len(labels)), dim=1)[0] - _implicit_quantiles(len(labels)).view(1, -1) # The empirical ECE score if the predictions are perfect 
-        baseline_ece = comparison_samples.abs().mean()
+        if int(len(labels)) not in _baseline_ece_cache:   # Check if the baseline value is already in the cache. In the future can also store this permanently
+            n_sample = 1000
+            comparison_samples = torch.sort(torch.rand(n_sample, len(labels)), dim=1)[0] - _implicit_quantiles(len(labels)).view(1, -1) # The empirical ECE score if the predictions are perfect 
+            _baseline_ece_cache[int(len(labels))] = comparison_samples.abs().mean()
+            
+        baseline_ece = _baseline_ece_cache[int(len(labels))].to(ece.device)
         ece = ece - baseline_ece
     return ece
 
 
-def compute_mean(predictions, resolution=500):
-    """ 
-    Compute the mean of the predictions
-    
-    Inputs:
-        predictions: a batch of distribution predictions
-        resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
-    
-    Outputs:
-        std: array [batch_size], the mean of the predictions
-    """
-    quantiles = _implicit_quantiles(resolution) 
-    samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
-    return samples.mean(dim=0)
-    
+
     
 def plot_reliability_diagram(predictions, labels, ax=None):
     """
@@ -117,7 +142,8 @@ def plot_reliability_diagram(predictions, labels, ax=None):
         ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
     with torch.no_grad():
-        cdfs = predictions.cdf(labels).flatten() 
+        device = _get_prediction_device(predictions)
+        cdfs = predictions.cdf(labels.to(device)).flatten() 
         cdfs, _ = torch.sort(cdfs) 
         
         if ax is None:
@@ -141,20 +167,21 @@ def plot_reliability_diagram(predictions, labels, ax=None):
         
         
         
-def plot_density(predictions, labels, max_count=100, ax=None, resolution=100, smooth_bw=0):
+def plot_density(predictions, labels=None, max_count=100, ax=None, resolution=100, smooth_bw=0):
     """ 
     Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
     Input:
         predictions: required Distribution instance, a batch of distribution predictions
-        labels: required array [batch_size], the labels
+        labels: array [batch_size], the labels, if None then the labels are not plotted
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
         max_count: optional int, the maximum number of PDFs to plot
         smooth_bw: optional int, smooth the PDF with a uniform kernel whose bandwidth is smooth_bw / resolution
     Output:
         ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
-    values = predictions.icdf(torch.linspace(0, 1, resolution+2)[1:-1].view(-1, 1)).cpu()  # [n_quantiles, batch_shape]
+    device = _get_prediction_device(predictions)
+    values = predictions.icdf(torch.linspace(0, 1, resolution+2, device=device)[1:-1].view(-1, 1)).detach().cpu()  # [n_quantiles, batch_shape]
     centers = (values[1:] + values[:-1]) * 0.5  
     interval = values[1:] - values[:-1] 
     
@@ -163,10 +190,7 @@ def plot_density(predictions, labels, max_count=100, ax=None, resolution=100, sm
         interval = F.conv1d(torch.cat([interval[:smooth_bw], interval, interval[-smooth_bw:]], dim=0).permute(1, 0).unsqueeze(1), 
                             weight=torch.ones(1, 1, smooth_bw*2+1, device=interval.device)).squeeze(1).permute(1, 0)
     density = 1. / resolution / interval   # Compute the empirical density
-#     np.set_printoptions(suppress=True)
-#     print(values[:, 0])
-#     print(density[:, 0].numpy())
-#     print(values.max(), values.min())
+
     vpstats = [{'coords': centers[:, i].numpy(), 'vals': density[:, i].numpy(),
                 'mean': values[:, i].mean(), 'median': values[resolution // 2, i], 
                 'min': values[0, i], 'max': values[-1, i]} for i in range(density.shape[1]) if i < max_count]
@@ -178,35 +202,121 @@ def plot_density(predictions, labels, max_count=100, ax=None, resolution=100, sm
         ax = plt.gca() 
         
     ax.violin(vpstats=vpstats, positions=range(len(vpstats)), showextrema=False, widths=0.7)
-    ax.scatter(range(len(vpstats)), labels[:len(vpstats)].cpu().numpy(), marker='x')
+    if labels is not None:
+        ax.scatter(range(len(vpstats)), labels[:len(vpstats)].detach().cpu().numpy(), marker='x')
     ax.set_ylabel('label value', fontsize=14)
     ax.set_xlabel('sample index', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
     return ax
 
 
-def plot_cdf(predictions, labels, ax=None, max_count=30, resolution=200):
+def _get_predictions_range(predictions, labels, n_plot, resolution):
+    """
+    Get a reasonable range to plot the CDFs for better visual appeal. 
+    If labels is not None, then use labels to decide the range, otherwise use predictions to decide the range
+    """
+    # 
+    with torch.no_grad():
+        if labels is not None: 
+            # If labels are available, use labels to decide the range to plot the CDFs
+            margin = (labels[:n_plot].max() - labels[:n_plot].min()) * 0.2   # Get the range of the plot
+            min_eval = (labels[:n_plot].min() - margin).cpu().item()
+            max_eval = (labels[:n_plot].max() + margin).cpu().item()
+        else:   
+            device = _get_prediction_device(predictions)
+            c_range = torch.linspace(0.01, 0.99, resolution, device=device) 
+            values = torch.sort(predictions.icdf(c_range.view(-1, 1))[:, :n_plot].flatten())[0]
+            values = values[~torch.isnan(values)]
+            # Choose the bottom 2% as the min value and top 2% as the max value
+            values = values[len(values) // 50: len(values) - (len(values) // 50) - 1]
+            margin = values.max() - values.min()
+            min_eval = (values.min() - margin).cpu().item()
+            max_eval = (values.max() + margin).cpu().item()
+        return min_eval, max_eval
+
+
+def plot_cdf_sequence(predictions, labels=None, ax=None, max_count=20, resolution=200):
     """ 
     Plot the CDF functions
     
     Input:
         predictions: required Distribution instance, a batch of distribution predictions
-        labels: required array [batch_size], the labels
+        labels: optional array [batch_size], the labels
+        max_count: optional array [batch_size], the maximum number 
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
         
     Output:
         ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
-    n_plot = len(labels)
+    # Figure out the maximum number of CDFs to plot
+    n_plot = _get_prediction_batch_shape(predictions)
     if n_plot > max_count:
         n_plot = max_count
+    
+    device = _get_prediction_device(predictions)
+    
+    with torch.no_grad():
+        min_eval, max_eval = _get_predictions_range(predictions, labels, n_plot, resolution)
+        y_range = torch.linspace(min_eval, max_eval, resolution, device=device)  # Get the values on which to evaluate the CDF
         
-    margin = (labels[:n_plot].max() - labels[:n_plot].min()) * 0.2   # Get the range of the plot
-    y_range = torch.linspace(labels[:n_plot].min() - margin, labels[:n_plot].max() + margin, resolution, device=labels.device)  # Get the values on which to evaluate the CDF
+        # Evaluate the CDF
+        cdfs = predictions.cdf(y_range.view(-1, 1))[:, :n_plot].cpu().numpy()
+        if labels is not None:
+            label_cdfs = predictions.cdf(labels.to(device))[:n_plot].cpu().numpy()
+    
+    if ax is None:
+        optimal_width = n_plot 
+        if optimal_width < 4:
+            optimal_width = 4
+        plt.figure(figsize=(optimal_width, 4))
+        ax = plt.gca() 
+            
+    
+    x_shift = np.array([(max_eval - min_eval)*i for i in range(n_plot)])   # Shift each plotted CDF by the right amount 
+    x_centers = np.array([(max_eval - min_eval)*(i+0.5)+min_eval for i in range(n_plot)]) # The center of the shifted CDF. Used for labeling the axis
+    for i in range(n_plot):
+        ax.plot(y_range.cpu().numpy() + x_shift[i], cdfs[:, i], c='C0', alpha=0.5)
+        ax.axvline((max_eval - min_eval)*(i+0.5)+min_eval, c='C1', linestyle=':')
+    
+    ax.set_xticks(x_centers)
+    ax.set_xticklabels(range(n_plot))
+    
+    # Plot the labels
+    if labels is not None:
+        ax.scatter(labels[:n_plot].cpu().numpy() + x_shift, label_cdfs, color='C2', marker='x', zorder=3)
+        
+    ax.set_ylabel('CDF', fontsize=14)
+    ax.set_xlabel('sample index', fontsize=14)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+    return ax
+
+
+def plot_cdf(predictions, labels=None, ax=None, max_count=30, resolution=200):
+    """ 
+    Plot the CDF functions
+    
+    Input:
+        predictions: required Distribution instance, a batch of distribution predictions
+        labels: optional array [batch_size], the labels
+        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        
+    Output:
+        ax: matplotlib.axes.Axes, the ax on which the plot is made
+    """
+    n_plot = _get_prediction_batch_shape(predictions)
+    if n_plot > max_count:
+        n_plot = max_count
+    
+    device = _get_prediction_device(predictions)
+
     # Evaluate the CDF
     with torch.no_grad():
+        min_eval, max_eval = _get_predictions_range(predictions, labels, n_plot, resolution)
+
+        y_range = torch.linspace(min_eval, max_eval, resolution, device=device)  # Get the values on which to evaluate the CDF
         cdfs = predictions.cdf(y_range.view(-1, 1))[:, :n_plot].cpu().numpy()
-        label_cdfs = predictions.cdf(labels)[:n_plot].cpu().numpy()
+        if labels is not None:
+            label_cdfs = predictions.cdf(labels.to(device))[:n_plot].cpu().numpy()
     
     if ax is None: 
         plt.figure(figsize=(5, 5))
@@ -216,35 +326,40 @@ def plot_cdf(predictions, labels, ax=None, max_count=30, resolution=200):
     palette = np.array(sns.color_palette("husl", n_plot))
     for i in range(n_plot):
         ax.plot(y_range.cpu().numpy(), cdfs[:, i], c=palette[i], alpha=0.5)
-
-    ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', zorder=3)
+    
+    if labels is not None:
+        ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', zorder=3)
     ax.set_ylabel('cdf', fontsize=14)
     ax.set_xlabel('value', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
     return ax
     
     
-def plot_icdf(predictions, labels, ax=None, max_count=30, resolution=200):
+def plot_icdf(predictions, labels=None, ax=None, max_count=30, resolution=200):
     """
     Plot the inverse CDF functions
     
     Input:
         predictions: required Distribution instance, a batch of distribution predictions
-        labels: required array [batch_size], the labels
+        labels: optional array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
 
     Output:
         ax: matplotlib.axes.Axes, the ax on which the plot is made
     """
-    n_plot = len(labels)
+    n_plot = _get_prediction_batch_shape(predictions)
     if n_plot > max_count:
         n_plot = max_count
-        
-    margin = (labels[:n_plot].max() - labels[:n_plot].min()) * 0.2
-    c_range = torch.linspace(0.01, 0.99, resolution, device=labels.device)
+    
+    # In case labels is not on the same device as predictions, move them to the same device
+    device = _get_prediction_device(predictions)
+
+    c_range = torch.linspace(0.01, 0.99, resolution, device=device)
     with torch.no_grad():
         values = predictions.icdf(c_range.view(-1, 1))[:, :n_plot].cpu().numpy()
-        label_cdfs = predictions.cdf(labels)[:n_plot].cpu().numpy()
+        if labels is not None:
+            labels = labels.to(device)
+            label_cdfs = predictions.cdf(labels)[:n_plot].cpu().numpy()
     
     if ax is None: 
         plt.figure(figsize=(5, 5))
@@ -254,8 +369,10 @@ def plot_icdf(predictions, labels, ax=None, max_count=30, resolution=200):
     for i in range(n_plot):
         ax.plot(values[:, i], c_range.cpu().numpy(), c=palette[i], alpha=0.5)
     
-    ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', alpha=0.5, zorder=2)
+    if labels is not None:
+        ax.scatter(labels[:n_plot].cpu().numpy(), label_cdfs, color=palette[np.arange(n_plot)], marker='x', alpha=0.5, zorder=2)
     ax.set_ylabel('cdf', fontsize=14)
     ax.set_xlabel('value', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
     return ax
+
