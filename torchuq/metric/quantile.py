@@ -5,13 +5,14 @@ from scipy.stats import binom
 from matplotlib import cm
 import matplotlib.colors as mcolors
 import matplotlib as mpl
+from .utils import metric_plot_colors as mcolor
+from .. import _implicit_quantiles
 
-
-def _implicit_quantiles(n_quantiles):
-    # Induce the implicit quantiles, these quantiles should be equally spaced 
-    quantiles = torch.linspace(0, 1, n_quantiles+1)
-    quantiles = (quantiles[1:] - quantiles[1] * 0.5) 
-    return quantiles 
+# def _implicit_quantiles(n_quantiles):
+#     # Induce the implicit quantiles, these quantiles should be equally spaced 
+#     quantiles = torch.linspace(0, 1, n_quantiles+1)
+#     quantiles = (quantiles[1:] - quantiles[1] * 0.5) 
+#     return quantiles 
 
 
 def compute_pinball_loss(predictions, labels):
@@ -21,32 +22,32 @@ def compute_pinball_loss(predictions, labels):
     Input:
         predictions: required array [batch_size, n_quantiles] or [batch_size, 2, n_quantiles], a batch of quantile predictions
         labels: required array [batch_size], the labels
+    Output:
+        loss: array [batch_size, n_quantiles] the pinball loss on each quantile
     """
     if len(predictions.shape) == 2:
         quantiles = _implicit_quantiles(predictions.shape[1]).to(predictions.device).view(1, -1) 
         residue = labels.view(-1, 1) - predictions  
     else:
         quantiles = predictions[:, :, 1]
-        residue = labels.view(-1, 1) - predictions[:, :, 1] 
-    loss = torch.maximum(residue * quantiles, residue * (quantiles-1)).mean()
+        residue = labels.view(-1, 1) - predictions[:, :, 0] 
+    loss = torch.maximum(residue * quantiles, residue * (quantiles-1))
     return loss
 
 
-
-
-def plot_quantiles(predictions, labels, max_count=100, ax=None):
+def plot_quantile_sequence(predictions, labels=None, max_count=100, ax=None):
     """ 
     Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
     Input:
         predictions: required Distribution instance, a batch of distribution predictions
-        labels: required array [batch_size], the labels
+        labels: optinal array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
         max_count: optional int, the maximum number of PDFs to plot
     """
     # Plot at most 100 predictions
-    if len(labels) <= max_count:
-        max_count = len(labels)
+    if len(predictions) <= max_count:
+        max_count = len(predictions)
         
     if len(predictions.shape) == 2:
         quantiles = _implicit_quantiles(predictions.shape[1]).view(1, -1).repeat(max_count, 1)
@@ -65,8 +66,9 @@ def plot_quantiles(predictions, labels, max_count=100, ax=None):
 
     colors = cm.get_cmap('coolwarm')(quantiles.numpy())
     
-    im = ax.eventplot(predictions.cpu().numpy(), orientation='vertical', colors=colors)   # Plot the quantiles as an event plot
-    ax.scatter(range(max_count), labels[:max_count].cpu().numpy(), marker='x', zorder=3, color='#27ae60')  # Plot the observed samples
+    im = ax.eventplot(predictions.detach().cpu().numpy(), orientation='vertical', colors=colors)   # Plot the quantiles as an event plot
+    if labels is not None:
+        ax.scatter(range(max_count), labels[:max_count].detach().cpu().numpy(), marker='x', zorder=3, color=mcolor['label'])  # Plot the observed samples
     ax.set_ylabel('label value', fontsize=14)
     ax.set_xlabel('sample index', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)

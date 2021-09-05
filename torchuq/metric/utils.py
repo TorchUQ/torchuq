@@ -19,6 +19,22 @@ def make_figure_calibration(confidence, accuracy, plot_ax=None):
     plt.show()
     
     
+def _compute_reduction(original, reduction):
+    assert reduction in ['none', 'mean', 'sum', 'median', 'min', 'max'], "Reduction can only be none, mean, sum, min, max or median"
+    if reduction == 'none':
+        return original
+    elif reduction == 'mean':
+        return original.mean()
+    elif reduction == 'sum':
+        return original.sum()
+    elif reduction == 'median':
+        return torch.quantile(original, 0.5)
+    elif reduction == 'min':
+        return original.min()
+    elif reduction == 'max':
+        return original.max()
+    
+    
 def get_gaussian_filter(kernel_size=3, device=None):
     x_grid = torch.linspace(-5, 5, kernel_size)
     gaussian_kernel = (-x_grid ** 2).exp()
@@ -39,3 +55,10 @@ def get_uniform_filter(kernel_size=3, device=None):
     op.requires_grad = False
     op.weight = nn.Parameter(1./ (kernel_size+1) * torch.ones(1, 1, kernel_size+1, device=device, requires_grad=False))
     return lambda x: op(x.view(1, 1, -1)).flatten()
+
+
+metric_plot_colors = {
+    'label': '#27ae60',
+    'prediction': '#3498db',
+    'quantile': '#3498db',
+}

@@ -7,9 +7,10 @@ from scipy.stats import binom
 from torch.nn import functional as F
 from .utils import metric_plot_colors as mcolors
 from .. import _get_prediction_device, _implicit_quantiles, _get_prediction_batch_shape
+from .utils import _compute_reduction 
 
     
-def compute_all(predictions, labels, resolution=500):
+def compute_all_metrics(predictions, labels, resolution=500):
     results_all = {}
     results_all['crps'] = compute_crps(predictions, labels, resolution)
     results_all['std'] = compute_std(predictions, resolution)
@@ -18,7 +19,7 @@ def compute_all(predictions, labels, resolution=500):
     return results_all 
 
 
-def compute_crps(predictions, labels, resolution=500):  
+def compute_crps(predictions, labels, reduction='mean', resolution=500):  
     """
     Compute the CRPS score 
     
@@ -28,7 +29,7 @@ def compute_crps(predictions, labels, resolution=500):
         resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
         
     Output:
-        crps: array [batch_size], the CRPS score 
+        crps: array [batch_size] or array [] depending on the reduction, the CRPS score 
     """
     intervals = torch.linspace(0, 1, resolution+2, device=labels.device)[1:-1].view(-1, 1)
     weights = (intervals ** 2)[1:] - (intervals ** 2)[:-1]   # This is a trick to compute the Lesbegue integral of CDF^2 (when we only have access to inverse CDF)
@@ -39,14 +40,14 @@ def compute_crps(predictions, labels, resolution=500):
     part_under = (labels - icdf) * weights * partition   # Compute the Lesbegue integral for the \int_{x, x < y} (F[x] - I(y < x))^2 dx
     part_over = (icdf - labels) * weights.flip(dims=[0]) * (1 - partition)  # Compute the Lesbegue integral for the \int_{x, x > y} (F[x] - I(y < x))^2 dx
     crps = (part_under + part_over).abs().sum(dim=0)   # The abs is not necessary, but placed here just in case numerical errors cause CRPS to be below zero. 
-    return crps
+    return _compute_reduction(crps, reduction)
   
     
-def compute_nll(predictions, labels):
-    return -predictions.log_prob(labels)
+def compute_nll(predictions, labels, reduction='mean'):
+    return _compute_reduction(-predictions.log_prob(labels), reduction)
 
 
-def compute_std(predictions, resolution=500):
+def compute_std(predictions, reduction='mean', resolution=500):
     """ 
     Compute the standard deviation of the predictions
     
@@ -55,14 +56,15 @@ def compute_std(predictions, resolution=500):
         resolution: the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute
     
     Outputs:
-        std: array [batch_size], the standard deviation
+        std: array [batch_size] or array [], the standard deviation
     """
     quantiles = _implicit_quantiles(resolution) 
     samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
-    return (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
+    std = (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
+    return _compute_reduction(std, reduction)
 
 
-def compute_mean(predictions, resolution=500):
+def compute_mean(predictions, reduction='mean', resolution=500):
     """ 
     Compute the mean of the predictions
     
@@ -75,10 +77,10 @@ def compute_mean(predictions, resolution=500):
     """
     quantiles = _implicit_quantiles(resolution) 
     samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
-    return samples.mean(dim=0)
+    return _compute_reduction(samples.mean(dim=0), reduction)
     
     
-def compute_mean_std(predictions, resolution=500):
+def compute_mean_std(predictions, reduction='mean', resolution=500):
     """ 
     Same as compute_mean and compute_std, but combines into one function for better efficiency
     
@@ -92,7 +94,9 @@ def compute_mean_std(predictions, resolution=500):
     """
     quantiles = _implicit_quantiles(resolution) 
     samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
-    return samples.mean(dim=0), (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
+    mean = samples.mean(dim=0)
+    std = (samples - samples.mean(dim=0, keepdim=True)).pow(2).mean(dim=0).pow(0.5)
+    return _compute_reduction(mean, reduction), _compute_reduction(std, reduction) 
 
     
 _baseline_ece_cache = {}   # Cache for the ECE baselines. Because bootstrap is expensive, use cache to store the results and not recompute
@@ -167,7 +171,7 @@ def plot_reliability_diagram(predictions, labels, ax=None):
         
         
         
-def plot_density(predictions, labels=None, max_count=100, ax=None, resolution=100, smooth_bw=0):
+def plot_density_sequence(predictions, labels=None, max_count=100, ax=None, resolution=100, smooth_bw=0):
     """ 
     Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
