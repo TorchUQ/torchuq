@@ -7,7 +7,7 @@ Uncertainty quantification is a very active area of research, with hundreds of n
 
 1. how to represent uncertainty, and how to learn different uncertainty predictions from data.
 2. how to evaluate and visualize the quality of uncertainty predictions, such as calibration, coverage, scoring rules, etc. 
-3. how to obtain calibrated probability with the general framework of conformal prediction/calibration.
+3. how to obtain calibrated probability in i.i.d. / distribution shift / online adversarial setups. 
 4. how to measure group calibration or multi-calibration and how to implement algorithms to achieve them.
 
 We hope this tutorial will give you an overview of frequentist uncertainty quantification. This tutorial does not cover other paradigms such as Bayesian methods, belief theory, betting theory, etc. 
