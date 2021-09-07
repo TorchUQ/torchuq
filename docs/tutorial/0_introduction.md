@@ -10,9 +10,11 @@ Uncertainty quantification is a very active area of research, with hundreds of n
 3. how to obtain calibrated probability with the general framework of conformal prediction/calibration.
 4. how to measure group calibration or multi-calibration and how to implement algorithms to achieve them.
 
-We hope this tutorial will give you an overview of the landscape in the frequentist uncertainty quantification paradigm. This tutorial does not cover other paradigms such as Bayesian methods, belief theory, betting theory, etc.
+We hope this tutorial will give you an overview of frequentist uncertainty quantification. This tutorial does not cover other paradigms such as Bayesian methods, belief theory, betting theory, etc. 
 
 **Background** This tutorial aims to be as self contained as possible and will introduce the key concepts as we go. Required backgrounds include undergraduate level understanding of machine learning / statistics, and familiarity with Pytorch (if you have not used Pytorch before I would recommend first going through the [basic tutorial](https://pytorch.org/tutorials/beginner/deep_learning_60min_blitz.html)). 
+
+
 
 
 ## Outline of the Tutorial
@@ -21,8 +23,10 @@ The tutorial consists of the following topics. You can click the link to access 
 
 1. Regression
     a. Representing and evaluating predictions
-    b. Learning predictors with proper scoring rules
-    c. Conformal inference and calibration
+    b. Learning predictions with proper scoring rules
+    c.1 Conformal inference
+    c.2 Conformal calibration
+    d. Online prediction beyond exchangeability 
     
 2. Classification 
     a. Representing and evaluating predictions
@@ -30,6 +34,7 @@ The tutorial consists of the following topics. You can click the link to access 
     c. Zoo of calibration definitions
     
 3. Advanced topics
-    a. Multicalibration
-    b. Decision calibration 
+    a. Multicalibration and fairness
+    b. Decision making under uncertainty
+    
     
