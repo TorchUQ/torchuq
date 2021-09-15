@@ -6,6 +6,7 @@ from matplotlib import cm
 import matplotlib.colors as mcolors
 import matplotlib as mpl
 from .utils import metric_plot_colors as mcolor
+from .utils import _compute_reduction
 from .. import _implicit_quantiles
 
 # def _implicit_quantiles(n_quantiles):
@@ -15,7 +16,7 @@ from .. import _implicit_quantiles
 #     return quantiles 
 
 
-def compute_pinball_loss(predictions, labels):
+def compute_pinball_loss(predictions, labels, reduction='mean'):
     """
     Compute the pinball loss, which is a proper scoring rule for quantile predictions
     
@@ -32,7 +33,7 @@ def compute_pinball_loss(predictions, labels):
         quantiles = predictions[:, :, 1]
         residue = labels.view(-1, 1) - predictions[:, :, 0] 
     loss = torch.maximum(residue * quantiles, residue * (quantiles-1))
-    return loss
+    return _compute_reduction(loss, reduction)
 
 
 def plot_quantile_sequence(predictions, labels=None, max_count=100, ax=None):

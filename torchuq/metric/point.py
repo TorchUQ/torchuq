@@ -9,7 +9,8 @@ def compute_scores(predictions, labels, reduction='mean'):
         'L2': compute_l2_loss(predictions, labels, reduction=reduction),
         'Huber': compute_huber_loss(predictions, labels, reduction=reduction),
     }
-    scores = scores.update({'pinball_%.1f' % (i / 10.): compute_pinball_loss(predictions, labels, alpha=i/10., reduction=reduction)  for i in range(1, 10)})
+    scores.update({'pinball_%.1f' % (i / 10.): compute_pinball_loss(predictions, labels, alpha=i/10., reduction=reduction)  for i in range(1, 10)})
+    scores['MAE'] = scores['pinball_0.5']
     return scores 
 
 
@@ -32,9 +33,7 @@ def compute_huber_loss(predictions, labels, reduction='mean', delta=None):
     if delta is None:
         with torch.no_grad():
             sorted_err = torch.sort(abs_err)[0]      
-            print(sorted_err)
             delta = sorted_err[-len(sorted_err) // 5]
-            print(delta)
     option = (abs_err < delta).type(torch.float32)
     huber_loss = 0.5 * (abs_err ** 2) * option + delta * (abs_err - 0.5 * delta) * (1 - option)
     return _compute_reduction(huber_loss, reduction)
