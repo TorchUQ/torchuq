@@ -33,4 +33,4 @@ A good way to start is to go through the tutorials in ``docs/tutorial``. All the
 
 To run the code, you can install the dependencies with the follwoing command 
 
-`` pip install TBD ``
+`` pip3 install torch torchvision pandas matplotlib seaborn tensorboard ``

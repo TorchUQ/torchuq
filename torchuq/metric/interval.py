@@ -104,5 +104,5 @@ def plot_length_cdf(predictions, ax=None, plot_median=True):
     ax.set_ylabel('Prop. of intervals with smaller length', fontsize=14)
     ax.set_ylim([-0.05, 1.05])
     if plot_median:
-        ax.scatter([torch.quantile(length.cpu(), 0.5)], [torch.quantile(quantiles, 0.5)], c='C0')
+        ax.scatter([torch.quantile(length.cpu(), 0.5).item()], [torch.quantile(quantiles, 0.5).item()], c='C0')
     return ax 
