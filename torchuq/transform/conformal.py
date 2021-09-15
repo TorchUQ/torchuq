@@ -133,6 +133,10 @@ class DistributionConformalRandom(DistributionConformal):
         super(DistributionConformalRandom, self).__init__(val_predictions, val_labels, test_predictions, score_func, iscore_func)
         self.rand_cdf = torch.rand(1, _get_prediction_batch_shape(test_predictions), device=self.device)
         
+        # Random interpolation is special, the ICDF could be infinite 
+        self.val_scores[0] = -float('inf')
+        self.val_scores[-1] = float('inf')
+        
     def cdf(self, value):
         """
         The CDF at value. This function is NOT differentiable
@@ -141,8 +145,7 @@ class DistributionConformalRandom(DistributionConformal):
         """
         # First perform automatic shape induction and convert value into an array of shape [n_evaluations, batch_shape]
         value, out_shape = self.shape_inference(value)
-        # self.to(value.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
-        
+
         # Move value to the device of test_predictions to avoid device mismatch error
         out_device = value.device
         value = value.to(self.device)
@@ -156,9 +159,9 @@ class DistributionConformalRandom(DistributionConformal):
         # If cdf is 0, then set it to 0
         # If cdf is 1, then set it to U[0, 1]
         # ...
-        # If cdf is N-1, then set it to U[N-2, N-1]
-        # If cdf is N, set it to N-1
-        # If cdf is a value in between, 
+        # If cdf is N, then set it to U[N-1, N]
+        # If cdf is N+2, set it to N+1
+        # Note len(val_scores) = N+2
         cdf = ((cdf - 1) + self.rand_cdf).clamp(min=0, max=len(self.val_scores)-1)
         cdf = cdf / (len(self.val_scores) - 1)
         return cdf.view(out_shape).to(out_device) 
@@ -194,8 +197,8 @@ class DistributionConformalNAF(DistributionConformal):
         super(DistributionConformalNAF, self).__init__(val_predictions, val_labels, test_predictions, score_func, iscore_func)
         
         # Train both a flow and an inverse flow to avoid the numerical instability of inverting a flow
-        self.flow = NafFlow(feature_size=30).to(val_labels.device)
-        self.iflow = NafFlow(feature_size=30).to(val_labels.device)
+        self.flow = NafFlow(feature_size=200).to(val_labels.device)
+        self.iflow = NafFlow(feature_size=200).to(val_labels.device)
         target_cdf = torch.linspace(0, 1, len(self.val_scores), device=val_labels.device)  # The goal of the flow is to map non-conformity scores to CDF values uniformly in [0, 1]
          
         flow_optim = optim.Adam(list(self.flow.parameters()) + list(self.iflow.parameters()), lr=1e-3)
@@ -265,12 +268,13 @@ def _conformal_score_point(predictions, values):
     Input:
         predictions: array [batch_shape], a batch of point predictions
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
-        
     Output:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
-    return values - predictions.view(1, -1)
+    score = values - predictions.view(1, -1)
+    return score 
 
+    
 def _conformal_iscore_point(predictions, score):
     """
     Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
@@ -295,7 +299,8 @@ def _conformal_score_interval(predictions, values):
     Output:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
-    return (values - predictions.min(dim=1, keepdims=True)[0].permute(1, 0)) / (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0)
+    score = (values - predictions.min(dim=1, keepdims=True)[0].permute(1, 0)) / (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0) - 0.5
+    return score 
     
 def _conformal_iscore_interval(predictions, score):
     """
@@ -309,7 +314,7 @@ def _conformal_iscore_interval(predictions, score):
     Output:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
-    return predictions.min(dim=1, keepdims=True)[0].permute(1, 0) + score * (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0)
+    return predictions.min(dim=1, keepdims=True)[0].permute(1, 0) + (score + 0.5) * (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0)
     
 
 def _conformal_score_interval1(predictions, values, max_interval=1e+3):
@@ -352,12 +357,14 @@ def _conformal_score_quantile(predictions, values):
     
     # The score is equal to how many quantiles the value exceeds
     score = (values.unsqueeze(0) - sorted_pred[:-1]) / (sorted_pred[1:] - sorted_pred[:-1])   # [num_quantiles-1, n_evaluations, batch_shape]
-    score = sorted_quantile[:1] + (score.clamp(min=0.0, max=1.0) * quantile_gap).sum(dim=0)   # If value exceeds all samples, its score so far is num_particle-1, [n_evaluations, batch_shape]
+    score = sorted_quantile[:1] + (score.clamp(min=0.0, max=1.0) * quantile_gap).sum(dim=0)   # If value exceeds all samples, its score so far is 1, [n_evaluations, batch_shape]
 
     # Also consider values that are below the smallest sample or greater than the largest sample
-    # A value has score <0 iff it is less than the smallest sample, and score >1 iff it is greater than the largest sample
+    # A value has score <0 iff it is less than the smallest sample, and score >num_quantile iff it is greater than the largest sample
     score = score + (values - sorted_pred[0]).clamp(max=0.0) + (values - sorted_pred[-1]).clamp(min=0.0) 
-    return score
+    score = score - 0.5 # Center the score around 0, a label would take that score if it's exactly the 50\% quantile (based on linear interpolation)
+    return score 
+
 
 def _conformal_iscore_quantile(predictions, score):
     """
@@ -379,6 +386,8 @@ def _conformal_iscore_quantile(predictions, score):
         sorted_quantile, _ = torch.sort(predictions[:, :, 1], dim=1)   
         sorted_pred, _ = torch.sort(predictions[:, :, 0], dim=1)
     
+    score = score + 0.5    # Recover the centering in the _conformal_score_quantile function
+    
     sorted_pred = sorted_pred.permute(1, 0)  # [n_quantiles, batch_shape]
     sorted_quantile = sorted_quantile.permute(1, 0).unsqueeze(1) # [n_quantiles, 1, batch_shape]
     pred_gap = (sorted_pred[1:] - sorted_pred[:-1]).unsqueeze(1)  # [num_quantiles-1, 1, batch_shape]
@@ -391,6 +400,7 @@ def _conformal_iscore_quantile(predictions, score):
     value = value + (score - sorted_quantile[0]).clamp(max=0.0) + (score - sorted_quantile[-1]).clamp(min=0.0) 
     return value
 
+
 def _conformal_score_distribution(predictions, values):
     """
     Compute the non-conformity score of a set of values under some baseline predictor 
@@ -401,7 +411,9 @@ def _conformal_score_distribution(predictions, values):
     Output:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
-    return predictions.cdf(values) 
+    score = predictions.cdf(values) - 0.5
+    return score 
+
 
 def _conformal_iscore_distribution(predictions, score):
     """
@@ -415,8 +427,7 @@ def _conformal_iscore_distribution(predictions, score):
     Output:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
-    return predictions.icdf(score.clamp(min=1e-6, max=1-1e-6))  # Clamp it for numerical stability 
-
+    return predictions.icdf((score + 0.5).clamp(min=1e-6, max=1-1e-6))  # Clamp it for numerical stability 
 
 
 
@@ -424,15 +435,16 @@ def _conformal_score_distribution1(predictions, values):
     """
     An alternative choice of the non-conformity score for distribution predictions
     """
-    mean, std = compute_mean_std(predictions)
-    return (values - mean.view(1, -1)) / (1e-4 + std.view(1, -1))
+    mean, std = compute_mean_std(predictions, reduction='none')
+    score = (values - mean.view(1, -1)) / (1e-4 + std.view(1, -1))
+    return score
 
 
 def _conformal_iscore_distribution1(predictions, score):
     """
     An alternative choice of the non-conformity score for distribution predictions
     """
-    mean, std = compute_mean_std(predictions)
+    mean, std = compute_mean_std(predictions, reduction='none')
     return score * (1e-4 + std.view(1, -1)) + mean.view(1, -1)
 
 
@@ -442,6 +454,7 @@ def _conformal_score_particle(predictions, values):
     Input:
         predictions: array [batch_size, n_particles], a batch of particle predictions
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
+        one_side: boolean, set one_side=False for conformal calibration. Set one_side=True for conformal interval prediction 
         
     Output:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
@@ -457,7 +470,8 @@ def _conformal_score_particle(predictions, values):
     # Also consider values that are below the smallest sample or greater than the largest sample
     # A value has score <0 iff it is less than the smallest sample, and score >1 iff it is greater than the largest sample
     score = score + (values - sorted_pred[0]).clamp(max=0.0) + (values - sorted_pred[-1]).clamp(min=0.0) 
-    return score / predictions.shape[1]   # Normalize the range of the score to be between [0, 1]
+    score = score / (predictions.shape[1]-1) - 0.5  # Normalize the range of the score to be between [0, 1] if it's smaller within the smallest/largest particle
+    return score
     
     
 def _conformal_iscore_particle(predictions, score):
@@ -476,7 +490,7 @@ def _conformal_iscore_particle(predictions, score):
 
     # For each interval between two adjacent samples, compute whether the score is large enough such that this interval should be added
     num_particle = sorted_pred.shape[0] 
-    score = score * num_particle
+    score = (score + 0.5) * (num_particle-1) 
     
     interval_contribution = (score.unsqueeze(0) - torch.linspace(0, num_particle, num_particle+1, device=score.device)[:-2].view(-1, 1, 1)).clamp(min=0.0, max=1.0) 
     interval_value = sorted_pred.unsqueeze(1)[1:] - sorted_pred.unsqueeze(1)[:-1] # [num_particles, n_evaluations, batch_shape]
@@ -520,13 +534,16 @@ def _conformal_score_ensemble(predictions, values):
     return scores.sum(dim=0)
 
 
-def _conformal_iscore_ensemble(predictions, values, min_search=-1e5, max_search=1e5):
+def _conformal_iscore_ensemble(predictions, score, min_search=-1e5, max_search=1e5):
     def forward_func(val):
         # The range of this function might not be [0, 1]
         # Force its range to be [0, 1] 
         return _conformal_score_ensemble(predictions, val)
     
-    return BisectionInverse(forward_func, min_search=min_search, max_search=max_search)(values)
+    values = BisectionInverse(forward_func, min_search=min_search, max_search=max_search)(score)
+    values[torch.isposinf(score)] = float('inf')
+    values[torch.isneginf(score)] = -float('inf')
+    return values
 
 
 def _concat_ensemble_prediction(predictions):
@@ -550,30 +567,20 @@ _concat_predictions['ensemble'] = _concat_ensemble_prediction
 
 
 
-class ConformalCalibrator(Calibrator):
-    def __init__(self, input_type='interval', interpolation='linear', score_func=0, verbose=False):
+class ConformalBase(Calibrator):
+    def __init__(self, input_type='interval', score_func=0, verbose=False):
         """
         Inputs:
             input_type: str, one of the regression input types
-            interpolation: 'linear', 'random' or 'naf', the interpolation used when computing the CDF/ICDF functions. 
-                NAF is slow but produces smoother CDFs. 
-                Random has better calibration error (it should have perfect calibration) but has non-continuous CDF. 
-                Linear achieves good trade-off between speed, smoothness of CDF and calibration error. 
             score_func: int, the score function to use. The index corresponds to the paper (cite). 
         """
-        super(ConformalCalibrator, self).__init__(input_type=input_type)
+        super(ConformalBase, self).__init__(input_type=input_type)
         self.verbose = verbose
         self.predictions = []
         self.labels = []
 #         if input_type not in _conformal_score_functions:
 #             assert False, "Input type %s not supported, supported types are %s" % (input_type, '/'.join(_conformal_score_functions.keys()))
-        if interpolation == 'linear':
-            self.distribution_class = DistributionConformalLinear
-        elif interpolation == 'random':
-            self.distribution_class = DistributionConformalRandom
-        else:
-            assert interpolation == 'naf', 'interpolation can only be linear/naf'
-            self.distribution_class = DistributionConformalNAF 
+
         self.score_func = score_func
         assert '%s_%d' % (input_type, score_func) in _conformal_score_functions, "score function %s_%d not available" % (input_type, score_func)
         
@@ -622,6 +629,28 @@ class ConformalCalibrator(Calibrator):
         return self 
     
     def __call__(self, predictions):
+        assert False, "ConformalBase.__call__ is unimplemented"
+    
+    
+class ConformalCalibrator(ConformalBase):
+    def __init__(self, input_type='interval', interpolation='linear', score_func=0, verbose=False):
+        """
+        Inputs:
+            interpolation: 'linear', 'random' or 'naf', the interpolation used when computing the CDF/ICDF functions. 
+                NAF is slow but produces smoother CDFs. 
+                Random has better calibration error (it should have perfect calibration) but has non-continuous CDF. 
+                Linear achieves good trade-off between speed, smoothness of CDF and calibration error. 
+        """
+        super(ConformalCalibrator, self).__init__(input_type=input_type, score_func=score_func, verbose=verbose) 
+        if interpolation == 'linear':
+            self.distribution_class = DistributionConformalLinear
+        elif interpolation == 'random':
+            self.distribution_class = DistributionConformalRandom
+        else:
+            assert interpolation == 'naf', 'interpolation can only be linear/naf'
+            self.distribution_class = DistributionConformalNAF 
+            
+    def __call__(self, predictions):
         """ 
         Output the calibrated probabilities given input base prediction
         Inputs:
@@ -639,3 +668,88 @@ class ConformalCalibrator(Calibrator):
                                          iscore_func=_conformal_iscore_functions[score_func_name],
                                          verbose=self.verbose)
         return results
+
+    
+class ConformalIntervalPredictor(ConformalBase):
+    def __init__(self, input_type='interval', coverage='exact', score_func=0, confidence=0.95, verbose=False):
+        """
+        Inputs:
+            input_type: str, one of the regression input types
+            score_func: int, the score function to use. The index corresponds to the paper (cite). 
+            coverage: the coverage can be 'exact' or '1/n'. If the coverage is exact, then the algorithm can output [-inf, +inf] intervals
+        """
+        super(ConformalIntervalPredictor, self).__init__(input_type=input_type, score_func=score_func, verbose=verbose)
+        self.val_scores = None
+        
+        assert coverage == 'exact' or coverage == '1/n' or coverage == '1/N', "Coverage can only be 'exact' or '1/N'"
+        self.coverage = coverage
+        self.confidence = confidence
+        
+    
+    def __call__(self, predictions, confidence=None):
+        """
+        Input: 
+            confidence: float, the confidence level of the prediction intervals. If None then uses the default confidence interval specified in the constructor 
+        """
+        if confidence is None:
+            confidence = self.confidence 
+        assert confidence > 0 and confidence < 1., 'Confidence must be a number of (0, 1)'
+        
+        self.check_type(predictions) 
+        self.to(predictions)
+        
+        score_func_name = '%s_%d' % (self.input_type, self.score_func)
+        score_func = _conformal_score_functions[score_func_name]
+        iscore_func = _conformal_iscore_functions[score_func_name]
+        
+        # Get the sorted non-conformity score on the validation set 
+        test_shape = _get_prediction_batch_shape(predictions)
+        
+        val_scores = torch.sort(score_func(_concat_predictions[self.input_type](self.predictions), torch.cat(self.labels, dim=0)).abs().flatten())[0]
+        val_scores_ge = torch.linspace(0, 1, len(val_scores)+2, device=self.device)[:-1]  # Generate 0, 1/N+1, ..., N/N+1
+        val_scores_geq = torch.linspace(0, 1, len(val_scores)+2, device=self.device)[:-1]
+        
+        # Compute the quantiles of the non-conformity scores, and handle situations where the quantiles are identical. 
+        while True:   # This iteration is for handling values with identical non-conformity score 
+            new_val_scores_ge = val_scores_ge.clone()
+            new_val_scores_ge[1:-1][val_scores[:-1] == val_scores[1:]] = val_scores_ge[2:][val_scores[:-1] == val_scores[1:]]
+            if (new_val_scores_ge - val_scores_ge).sum() == 0:
+                break
+            val_scores_ge = new_val_scores_ge
+
+        val_scores_geq = val_scores_ge[:-1] + (val_scores_ge[1:] - val_scores_ge[:-1]).view(1, -1) * torch.rand(test_shape, device=self.device).view(-1, 1)
+        val_scores_ge = val_scores_ge[1:].view(1, -1).repeat(test_shape, 1)
+
+        while True:   # This iteration is for handling values with identical non-conformity score 
+            new_val_scores_geq = val_scores_geq.clone()
+            new_val_scores_geq[:, 1:][:, val_scores[:-1] == val_scores[1:]] = val_scores_geq[:, :-1][:, val_scores[:-1] == val_scores[1:]]
+            if (new_val_scores_geq - val_scores_geq).sum() == 0:
+                break
+            val_scores_geq = new_val_scores_geq
+        
+        
+        # Now we should have the following:
+        # val_scores_ge[i] is 1/(N+1)#{n | A(x_n, y_n) < a}, if a > val_scores[i]
+        # val_scores_geq[i] is 1/(N+1)#{n | A(x_n, y_n) < a} + U(0, 1)/(N+1)#{n | A(x_n, y_n) = a} if a = val_scores[i]
+        
+        if self.coverage == 'exact':   # If coverage is exact, add U(0, 1)/(N+1)
+            noise = torch.rand(test_shape, 1, device=self.device) / (len(val_scores) + 1)
+            val_scores_geq = val_scores_geq + noise
+            val_scores_ge = val_scores_ge + noise
+        else:   # If coverage is up to 1/N accuracy, then add 1/(N+1), we always under cover to achieve the smallest intervals 
+            val_scores_geq = val_scores_geq + 1/(len(val_scores) + 1)
+            val_scores_ge = val_scores_ge + 1/(len(val_scores) + 1)
+
+        geq_index = (val_scores_geq <= confidence).type(torch.int32).sum(dim=1) 
+        ge_index = (val_scores_ge <= confidence).type(torch.int32).sum(dim=1) 
+
+        eps = 1e-5 
+        target_scores = torch.maximum((val_scores[ge_index.clamp(max=len(val_scores)-1)] - eps), val_scores[geq_index-1])
+        y_ub = iscore_func(predictions, target_scores.view(1, -1)).flatten()
+        y_lb = iscore_func(predictions, -target_scores.view(1, -1)).flatten()
+        
+        y_ub[ge_index > len(val_scores)-1] = float('inf')
+        y_lb[ge_index > len(val_scores)-1] = -float('inf')
+
+        result = torch.stack([y_lb, y_ub], axis=-1)
+        return result

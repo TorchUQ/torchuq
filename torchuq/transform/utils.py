@@ -63,8 +63,7 @@ class BisectionInverse:
             result = (current_ub + current_lb) / 2
             
         # Generate the correct backward gradient
-        if val.requires_grad and torch.is_grad_enabled():   # Only do this if gradients are enabled
-            
+        if self.forward_func(val).requires_grad and torch.is_grad_enabled():   # Only do this if gradients are enabled            
             # Compute the forward gradient
             result_ = copy.deepcopy(result)
             result_.requires_grad = True

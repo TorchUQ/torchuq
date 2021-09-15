@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
 import copy, math
-print(__name__)
 from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_device
 
 
@@ -63,16 +62,18 @@ class DistributionBase:
     
     def shape_inference(self, value):
         """ 
-        Handle all unusual shapes that 
+        Handle all unusual shapes 
         """
         # Enumerate all the valid input shapes for value
         if type(value) == int or type(value) == float:  
-            return value.view(1, 1), self.batch_shape[0]
+            return value.view(1, 1).repeat(1, self.batch_shape[0]), self.batch_shape[0]
         elif len(value.shape) == 1 and value.shape[0] == 1:  # If the value is 1-D it must be either 1 or equal to batch_shape[0]
-            return value.view(1, 1), self.batch_shape[0]
+            return value.view(1, 1).repeat(1, self.batch_shape[0]), self.batch_shape[0]
         elif len(value.shape) == 1 and value.shape[0] == self.batch_shape[0]:   # If the value is 1-D it must be either 1 or equal to batch_shape[0]
             return value.view(1, -1), self.batch_shape[0]
-        elif len(value.shape) == 2:
+        elif len(value.shape) == 2 and value.shape[1] == 1:
+            return value.repeat(1, self.batch_shape[0]), [len(value), self.batch_shape[0]]
+        elif len(value.shape) == 2 and value.shape[1] == self.batch_shape[0]:
             return value, [len(value), self.batch_shape[0]]
         else:
             assert False, "Shape [%s] invalid" % ', '.join([str(shape) for shape in value.shape])
@@ -148,6 +149,7 @@ class ConcatDistribution():
         return split_value, split_dim
     
     
+    
 class Calibrator:
     def __init__(self, input_type='auto'):
         """
@@ -182,6 +184,7 @@ class Calibrator:
         Input:
             predictions: a batched prediction object, the shape must batch the input_type argument 
             labels: array [batch_size]
+            side_feature: optional array of shape [batch_size, n_features]
         Output: 
             self: returns the calibrator itself, and an optional log object
         """
