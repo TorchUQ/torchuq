@@ -1,7 +1,5 @@
-import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,7 +25,7 @@ class NafFlow(nn.Module):
         self.logit_w = nn.Parameter(
             torch.randn(1, feature_size)
         )
-        self.activation = F.sigmoid
+        self.activation = torch.sigmoid
         self.inverse_activation = self.logit
 
     def logit(self, x):
