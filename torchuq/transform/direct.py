@@ -2,7 +2,7 @@ import torch
 from torch.distributions.normal import Normal 
 from .utils import BisectionInverse
 from .. import _implicit_quantiles, _check_valid, _parse_name
-from ..metric.distribution import compute_mean, compute_std, plot_density_sequence
+from ..evaluate.distribution import compute_mean, compute_std, plot_density_sequence
 
 
 def distribution_to_particle(predictions, n_particles=50):
@@ -105,29 +105,6 @@ class DistributionKDE:
     
     def icdf(self, value):
         return BisectionInverse(self.cdf, min_search=self.min_search, max_search=self.max_search)(value)
-        
-#         # Use vectorized bisection to find the inverse 
-#         with torch.no_grad():
-#             dummy = self.cdf(val)   # Only a trick to get the right shape of the output tensor 
-#             current_lb = torch.ones_like(dummy) * self.min_search   # Initialize the upper and lower search interval
-#             current_ub = torch.ones_like(dummy) * self.max_search 
-#             for _ in range(50):
-#                 mid_point = (current_lb + current_ub) / 2
-#                 cdfs = self.cdf(mid_point)
-
-#                 current_ub = current_ub * (cdfs < val) + mid_point * (cdfs >= val)   # If the CDF value is greater than the target value, shrink the upper bound
-#                 current_lb = current_lb * (cdfs >= val) + mid_point * (cdfs < val)   # If the CDF value is smaller than the target value, shrink the upper bound
-#             icdf = (current_ub + current_lb) / 2
-            
-#         # The exciting part: to generate the right gradients this function has different forward and backward computations
-#         # This is quite clumsy, but it seems that otherwise mixture of Gaussians do not have a analytical ICDF function, so it's unclear how to do this otherwise
-        
-# #         icdf_copy = Variable(icdf, requires_grad=True)
-# #         grad_output = self.cdf(icdf_copy)
-            
-# #         manual_grad = grad(outputs=grad_output, inputs=icdf_copy,
-# #                            create_graph=True, retain_graph=True)[0]
-#         return icdf
                 
     
 def quantile_to_distribution(predictions, bandwidth_ratio=2.5):

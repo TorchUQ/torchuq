@@ -15,7 +15,7 @@ from .basic import Calibrator, ConcatDistribution, DistributionBase
 from .utils import BisectionInverse
 from ..models.flow import NafFlow
 from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_device, _parse_name, _get_prediction_batch_shape
-from ..metric.distribution import compute_std, compute_mean_std
+from ..evaluate.distribution import compute_std, compute_mean_std
 
         
 class DistributionConformal(DistributionBase):
