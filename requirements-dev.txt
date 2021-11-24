@@ -6,3 +6,6 @@ pandas
 matplotlib 
 seaborn 
 tensorboard
+sphinx>=2.4.3
+sphinx-rtd-theme>=0.5.2
+sphinx-autodoc-typehints>=1.12.0
