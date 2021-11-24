@@ -80,7 +80,8 @@ def plot_calibration_diagram_simple(predictions, labels, verbose=False, plot_ax=
     
 def plot_calibration_bin(predictions, labels, num_bins=15, ax=None):
     """ Plot the calibration diagram with binning 
-    Inputs:
+
+    Args:
         predictions: a batch of categorical predictions with shape [batch_size, num_classes]
         labels: a batch of labels with shape [batch_size]
         num_bins: number of bins to plot the categorical 

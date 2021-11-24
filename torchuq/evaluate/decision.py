@@ -42,12 +42,11 @@ def compute_decision_loss(predictions, labels, losses):
 
 
 def compute_decision_loss_random(predictions, labels, num_loss=500, num_action=2, seed=None):
-    """ 
-    Simulate a set of random loss functions, and compute the Bayes decision under the prediction. Current this class only supports categorical probability predictions. 
+    """ Simulate a set of random loss functions, and compute the Bayes decision under the prediction. Current this class only supports categorical probability predictions.
     
     Returns:
-    pred_loss: predicted loss of the Bayes decision
-    true_loss: true loss of the Bayes decision according to the provided true labels
+        pred_loss: predicted loss of the Bayes decision
+        true_loss: true loss of the Bayes decision according to the provided true labels
     """
     device = predictions.device
     num_classes = predictions.shape[1]

@@ -7,11 +7,11 @@ import torch
 from .utils import metric_plot_colors as mcolors
 from .utils import _compute_reduction
 
+
 def plot_interval_sequence(predictions, labels=None, ax=None, max_count=100):
-    """ 
-    Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
+    """ Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
-    Input:
+    Args:
         predictions: required array [batch_size, 2] instance, a batch of interval predictions
         labels: optinal array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
@@ -64,10 +64,10 @@ def compute_length(predictions, reduction='mean'):
     
     If the interval has inf length then 
     
-    Input:
+    Args:
         predictions: a batch of distribution predictions
         
-    Output:
+    Returns:
         length, 
     """
     length = (predictions[:, 1] - predictions[:, 0]).abs()
@@ -88,7 +88,7 @@ def plot_length_cdf(predictions, ax=None, plot_median=True):
     """ 
     Plot the CDF of interval length
     
-    Input:
+    Args:
         predictions: required array [batch_size, 2] instance, a batch of interval predictions
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
     """

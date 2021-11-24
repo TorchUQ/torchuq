@@ -26,7 +26,7 @@ def compute_pinball_loss(predictions, labels, alpha=0.5, reduction='mean'):
 
 def compute_huber_loss(predictions, labels, reduction='mean', delta=None):
     """
-    Input:
+    Args:
         delta: the delta parameter for the huber loss, if None then automatically set it as the top 20% largest absolute error
     """
     abs_err = (predictions - labels).abs()
@@ -40,10 +40,9 @@ def compute_huber_loss(predictions, labels, reduction='mean', delta=None):
 
 
 def plot_scatter(predictions, labels, ax=None):
-    """
-    Plot the scatter plot between the point predictions and the labels
+    """Plot the scatter plot between the point predictions and the labels
     
-    Input:
+    Args:
         predictions: required array [batch_size], a batch of point predictions
         labels: required array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
@@ -66,10 +65,9 @@ def plot_scatter(predictions, labels, ax=None):
     
     
 def plot_conditional_bias(predictions, labels, knn=None, conditioning='label', ax=None):
-    """
-    Make the conditional bias diagram as described in [TBD]
+    """Make the conditional bias diagram as described in [TBD]
     
-    Inputs:
+    Args:
         predictions: required point prediction
         labels: required, the labels
         knn: the number of nearest neighbors to average over. If None knn is set automatically 

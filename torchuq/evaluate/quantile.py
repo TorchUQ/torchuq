@@ -17,13 +17,13 @@ from .. import _implicit_quantiles
 
 
 def compute_pinball_loss(predictions, labels, reduction='mean'):
-    """
-    Compute the pinball loss, which is a proper scoring rule for quantile predictions
+    """Compute the pinball loss, which is a proper scoring rule for quantile predictions
     
-    Input:
+    Args:
         predictions: required array [batch_size, n_quantiles] or [batch_size, 2, n_quantiles], a batch of quantile predictions
         labels: required array [batch_size], the labels
-    Output:
+
+    Returns:
         loss: array [batch_size, n_quantiles] the pinball loss on each quantile
     """
     if len(predictions.shape) == 2:
@@ -37,10 +37,9 @@ def compute_pinball_loss(predictions, labels, reduction='mean'):
 
 
 def plot_quantile_sequence(predictions, labels=None, max_count=100, ax=None):
-    """ 
-    Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
+    """ Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
-    Input:
+    Args:
         predictions: required Distribution instance, a batch of distribution predictions
         labels: optinal array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
@@ -83,10 +82,9 @@ def plot_quantile_sequence(predictions, labels=None, max_count=100, ax=None):
     
     
 def plot_quantile_calibration(predictions, labels, ax=None):
-    """
-    Plot the reliability diagram  for quantiles
+    """Plot the reliability diagram  for quantiles
     
-    Input:
+    Args:
         predictions: required array [n_quantiles, batch_size] or [2, n_quantiles, batch_size], a batch of quantile predictions
         labels: required array [batch_size], the labels
         ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
