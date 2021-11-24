@@ -1,10 +1,5 @@
-numpy
-scipy
-torch 
-torchvision 
-pandas 
-matplotlib 
-seaborn 
+-r requirements.txt
+
 tensorboard
 sphinx>=2.4.3
 sphinx-rtd-theme>=0.5.2
