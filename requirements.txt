@@ -5,3 +5,5 @@ torchvision
 pandas 
 matplotlib 
 seaborn 
+h5py
+scikit-learn
