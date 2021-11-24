@@ -7,7 +7,8 @@ TorchUQ Documentation
 User Guide
 **********
 .. toctree::
-  :maxdepth: 2
+  :maxdepth: 1
 
   installation
   quick_start
+  api_reference/index
