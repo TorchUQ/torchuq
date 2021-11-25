@@ -15,19 +15,47 @@ def compute_scores(predictions, labels, reduction='mean'):
 
 
 def compute_l2_loss(predictions, labels, reduction='mean'):
+    """ Compute the L2 loss
+    
+    Args:
+        predictions (tensor): a batch of point predictions.
+        labels (tensor): the labels, an array of shape [batch_size].
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        
+    Returns:
+        tensor: the l2 loss, an array with shape [batch_size] or shape [] depending on the reduction.
+    """
     return _compute_reduction((predictions - labels).pow(2).mean(), reduction)
 
 
 def compute_pinball_loss(predictions, labels, alpha=0.5, reduction='mean'):
+    """ Compute the pinball loss for the alpha-th quantile
+    
+    Args:
+        predictions (tensor): a batch of point predictions.
+        labels (tensor): the labels, an array of shape [batch_size].
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        alpha (float): the quantile to compute the pinball loss for. 
+        
+    Returns:
+        tensor: the pinball loss, an array with shape [batch_size] or shape [] depending on the reduction.
+    """
     residue = labels - predictions
     pinball = torch.maximum(residue * alpha, residue * (alpha-1))
     return _compute_reduction(pinball, reduction)
 
 
 def compute_huber_loss(predictions, labels, reduction='mean', delta=None):
-    """
+    """ Compute the Huber loss
+    
     Args:
-        delta: the delta parameter for the huber loss, if None then automatically set it as the top 20% largest absolute error
+        predictions (tensor): a batch of point predictions.
+        labels (tensor): the labels, an array of shape [batch_size].
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        delta (float): the delta parameter for the huber loss, if None then automatically set it as the top 20% largest absolute error.
+        
+    Returns:
+        tensor: the huber loss, an array with shape [batch_size] or shape [] depending on the reduction.
     """
     abs_err = (predictions - labels).abs()
     if delta is None:
@@ -43,9 +71,12 @@ def plot_scatter(predictions, labels, ax=None):
     """Plot the scatter plot between the point predictions and the labels
     
     Args:
-        predictions: required array [batch_size], a batch of point predictions
-        labels: required array [batch_size], the labels
-        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        predictions (tensor): a batch of point predictions.
+        labels (tensor): the labels, an array of shape [batch_size].
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size
+        
+    Returns:
+        axes: the ax on which the plot is made
     """
     if ax is None:
         plt.figure(figsize=(5, 5))
@@ -62,16 +93,21 @@ def plot_scatter(predictions, labels, ax=None):
     ax.set_xlim([r_min, r_max])
     ax.set_ylim([r_min, r_max])
     ax.tick_params(axis='both', which='major', labelsize=14)
+    return ax
+
     
-    
-def plot_conditional_bias(predictions, labels, knn=None, conditioning='label', ax=None):
+def plot_conditional_bias(predictions, labels, ax=None, knn=None, conditioning='label'):
     """Make the conditional bias diagram as described in [TBD]
     
     Args:
-        predictions: required point prediction
-        labels: required, the labels
-        knn: the number of nearest neighbors to average over. If None knn is set automatically 
-        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        predictions (tensor): a batch of point predictions.
+        labels (tensor): the labels, an array of shape [batch_size].
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
+        knn (int): the number of nearest neighbors to average over. If None knn is set automatically. 
+        conditioning (str): can be 'label' or 'prediction'. 
+        
+    Returns:
+        axes: the ax on which the plot is made
     """
     # Set the number of nearest neighbors to average over. 
     if knn is None:
@@ -106,3 +142,4 @@ def plot_conditional_bias(predictions, labels, knn=None, conditioning='label', a
     ax.set_xlabel('prediction', fontsize=14)
     ax.set_ylabel('label', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=14)
+    return ax
