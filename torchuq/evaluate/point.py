@@ -15,13 +15,13 @@ def compute_scores(predictions, labels, reduction='mean'):
 
 
 def compute_l2_loss(predictions, labels, reduction='mean'):
-    """ Compute the L2 loss
-    
+    """Compute the L2 loss.
+
     Args:
         predictions (tensor): a batch of point predictions.
         labels (tensor): the labels, an array of shape [batch_size].
-        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
-        
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'.
+
     Returns:
         tensor: the l2 loss, an array with shape [batch_size] or shape [] depending on the reduction.
     """
@@ -29,14 +29,14 @@ def compute_l2_loss(predictions, labels, reduction='mean'):
 
 
 def compute_pinball_loss(predictions, labels, alpha=0.5, reduction='mean'):
-    """ Compute the pinball loss for the alpha-th quantile
-    
+    """Compute the pinball loss for the alpha-th quantile.
+
     Args:
         predictions (tensor): a batch of point predictions.
         labels (tensor): the labels, an array of shape [batch_size].
-        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
-        alpha (float): the quantile to compute the pinball loss for. 
-        
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'.
+        alpha (float): the quantile to compute the pinball loss for.
+
     Returns:
         tensor: the pinball loss, an array with shape [batch_size] or shape [] depending on the reduction.
     """
@@ -46,14 +46,14 @@ def compute_pinball_loss(predictions, labels, alpha=0.5, reduction='mean'):
 
 
 def compute_huber_loss(predictions, labels, reduction='mean', delta=None):
-    """ Compute the Huber loss
-    
+    """Compute the Huber loss.
+
     Args:
         predictions (tensor): a batch of point predictions.
         labels (tensor): the labels, an array of shape [batch_size].
-        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'.
         delta (float): the delta parameter for the huber loss, if None then automatically set it as the top 20% largest absolute error.
-        
+
     Returns:
         tensor: the huber loss, an array with shape [batch_size] or shape [] depending on the reduction.
     """
@@ -68,15 +68,15 @@ def compute_huber_loss(predictions, labels, reduction='mean', delta=None):
 
 
 def plot_scatter(predictions, labels, ax=None):
-    """Plot the scatter plot between the point predictions and the labels
-    
+    """Plot the scatter plot between the point predictions and the labels.
+
     Args:
         predictions (tensor): a batch of point predictions.
         labels (tensor): the labels, an array of shape [batch_size].
-        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size
-        
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
+
     Returns:
-        axes: the ax on which the plot is made
+        axes: the ax on which the plot is made.
     """
     if ax is None:
         plt.figure(figsize=(5, 5))
@@ -95,19 +95,19 @@ def plot_scatter(predictions, labels, ax=None):
     ax.tick_params(axis='both', which='major', labelsize=14)
     return ax
 
-    
+
 def plot_conditional_bias(predictions, labels, ax=None, knn=None, conditioning='label'):
-    """Make the conditional bias diagram as described in [TBD]
-    
+    """Make the conditional bias diagram as described in [TODO: add paper reference].
+
     Args:
         predictions (tensor): a batch of point predictions.
         labels (tensor): the labels, an array of shape [batch_size].
         ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
-        knn (int): the number of nearest neighbors to average over. If None knn is set automatically. 
-        conditioning (str): can be 'label' or 'prediction'. 
-        
+        knn (int): the number of nearest neighbors to average over. If None knn is set automatically.
+        conditioning (str): can be 'label' or 'prediction'.
+
     Returns:
-        axes: the ax on which the plot is made
+        axes: the ax on which the plot is made.
     """
     # Set the number of nearest neighbors to average over. 
     if knn is None:

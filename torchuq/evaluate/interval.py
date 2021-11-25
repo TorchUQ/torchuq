@@ -8,18 +8,13 @@ from .utils import metric_plot_colors as mcolors
 from .utils import _compute_reduction
 
 
-
-    
 def compute_length(predictions, reduction='mean'):
-    """
-    Compute the average length of an interval prediction
-    
-    If the interval has inf length then 
-    
+    """Compute the average length of an interval prediction.
+
     Args:
-        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
-        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
-        
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2].
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'.
+
     Returns:
         tensor: the interval length, an array with shape [batch_size] or shape [] depending on the reduction.
     """
@@ -28,14 +23,13 @@ def compute_length(predictions, reduction='mean'):
 
 
 def compute_coverage(predictions, labels, reduction='mean'):
-    """
-    Compute the empirical coverage. This function is not differentiable 
-    
+    """Compute the empirical coverage. This function is not differentiable.
+
     Args:
-        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
-        labels (tensor): the labels, an array of shape [batch_size]
-        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
-        
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2].
+        labels (tensor): the labels, an array of shape [batch_size].
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'.
+
     Returns:
         tensor: the coverage, an array with shape [batch_size] or shape [] depending on the reduction.
     """
@@ -44,16 +38,18 @@ def compute_coverage(predictions, labels, reduction='mean'):
 
 
 def plot_interval_sequence(predictions, labels=None, ax=None, max_count=100):
-    """ Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
-    
+    """Plot the PDF of the predictions and the labels.
+
+    For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot.
+
     Args:
-        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
-        labels (tensor): the labels, an array of shape [batch_size]
-        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        max_count (int): the maximum number of intervals to plot
-        
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2].
+        labels (tensor): the labels, an array of shape [batch_size].
+        ax (axes): the axes to plot the figure on. If None, automatically creates a figure with recommended size.
+        max_count (int): the maximum number of intervals to plot.
+
     Returns:
-        axes: the ax on which the plot is made
+        axes: the ax on which the plot is made.
     """
     # Plot at most max_count predictions
     if len(labels) <= max_count:
@@ -99,16 +95,15 @@ def plot_interval_sequence(predictions, labels=None, ax=None, max_count=100):
 
 
 def plot_length_cdf(predictions, ax=None, plot_median=True):
-    """ 
-    Plot the CDF of interval length
-    
+    """Plot the CDF of interval length.
+
     Args:
-        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
-        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        plot_median (bool): if true plot the median interval length. 
-        
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2].
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
+        plot_median (bool): if true plot the median interval length.
+
     Returns:
-        axes: the ax on which the plot is made
+        axes: the ax on which the plot is made.
     """
     length = torch.sort((predictions[:, 1] - predictions[:, 0]).abs())[0]
     
