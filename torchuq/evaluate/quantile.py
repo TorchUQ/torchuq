@@ -9,6 +9,7 @@ from .utils import metric_plot_colors as mcolor
 from .utils import _compute_reduction
 from .. import _implicit_quantiles
 
+
 # def _implicit_quantiles(n_quantiles):
 #     # Induce the implicit quantiles, these quantiles should be equally spaced 
 #     quantiles = torch.linspace(0, 1, n_quantiles+1)
@@ -17,12 +18,12 @@ from .. import _implicit_quantiles
 
 
 def compute_pinball_loss(predictions, labels, reduction='mean'):
-    """Compute the pinball loss, which is a proper scoring rule for quantile predictions
-    
+    """Compute the pinball loss, which is a proper scoring rule for quantile predictions.
+
     Args:
-        predictions (tensor): a batch of quantile predictions, which is an array with shape [batch_size, n_quantiles] or [batch_size, 2, n_quantiles]. 
-        labels (tensor): the labels, an array of shape [batch_size]
-        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        predictions (tensor): a batch of quantile predictions, which is an array with shape [batch_size, n_quantiles] or [batch_size, 2, n_quantiles].
+        labels (tensor): the labels, an array of shape [batch_size].
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'.
 
     Returns:
         tensor: the pinball loss, an array with shape [batch_size] or shape [] depending on the reduction.
@@ -38,16 +39,18 @@ def compute_pinball_loss(predictions, labels, reduction='mean'):
 
 
 def plot_quantile_sequence(predictions, labels=None, ax=None, max_count=100):
-    """ Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
-    
+    """Plot the PDF of the predictions and the labels.
+
+    For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot.
+
     Args:
-        predictions (tensor): a batch of quantile predictions, which is an array with shape [batch_size, n_quantiles] or [batch_size, 2, n_quantiles]. 
-        labels (tensor): the labels, an array of shape [batch_size]
-        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        max_count (int): the maximum number of quantiles to plot
-        
+        predictions (tensor): a batch of quantile predictions, which is an array with shape [batch_size, n_quantiles] or [batch_size, 2, n_quantiles].
+        labels (tensor): the labels, an array of shape [batch_size].
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
+        max_count (int): the maximum number of quantiles to plot.
+
     Returns:
-        axes: the ax on which the plot is made
+        axes: the ax on which the plot is made.
     """
     # Plot at most 100 predictions
     if len(predictions) <= max_count:
@@ -84,18 +87,18 @@ def plot_quantile_sequence(predictions, labels=None, ax=None, max_count=100):
     cbar.set_label(label='quantiles', size=14) 
     cbar.ax.tick_params(labelsize=14) 
     return ax
-    
-    
+
+
 def plot_quantile_calibration(predictions, labels, ax=None):
-    """Plot the reliability diagram  for quantiles
-    
+    """Plot the reliability diagram  for quantiles.
+
     Args:
-        predictions (tensor): a batch of quantile predictions, which is an array with shape [batch_size, n_quantiles] or [batch_size, 2, n_quantiles]. 
-        labels (tensor): the labels, an array of shape [batch_size]
-        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        
+        predictions (tensor): a batch of quantile predictions, which is an array with shape [batch_size, n_quantiles] or [batch_size, 2, n_quantiles].
+        labels (tensor): the labels, an array of shape [batch_size].
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
+
     Returns:
-        axes: the ax on which the plot is made
+        axes: the ax on which the plot is made.
     """
     with torch.no_grad():
         labels = labels.to(predictions.device)
@@ -123,4 +126,3 @@ def plot_quantile_calibration(predictions, labels, ax=None):
         plt.xlim([0, 1])
         plt.ylim([0, 1])
         return ax
-        
