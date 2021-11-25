@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
-from .utils import *
+from .utils import _get_uniform_filter
 
 
 
@@ -37,7 +37,7 @@ def compute_classwise_ece(predictions, labels):
     return torch.cat(class_ece).mean()
 
 
-def plot_calibration_diagram_naf(predictions, labels, verbose=False):
+def _plot_calibration_diagram_naf(predictions, labels, verbose=False):
     max_confidence, prediction = predictions.max(dim=1)
     correct = (prediction == labels).type(torch.float32)
     confidence_ranking = torch.argsort(max_confidence)    
@@ -63,49 +63,112 @@ def plot_calibration_diagram_naf(predictions, labels, verbose=False):
         make_figure_calibration(torch.linspace(0, 1, 1000), output.flatten())
 
         
-def plot_calibration_diagram_simple(predictions, labels, verbose=False, plot_ax=None):
-    if len(predictions.shape) == 2:
-        max_confidence, prediction = predictions.max(dim=1)
-        correct = (prediction == labels).type(torch.float32)
-    else:
-        max_confidence = predictions
-        correct = labels
+def plot_reliability_diagram_smooth(predictions, labels, ax=None):
+    """ Plot the reliability diagram with smoothing
+
+    Args:
+        predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        labels (tensor): a batch of labels with shape [batch_size]
+        ax (axes): optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+    
+    Returns:
+        axes: the ax on which the plot is made
+    """
+    
+    # Get the confidence and the accuracy
+    max_confidence, predictions = predictions.detach().cpu().max(dim=1)
+    correct = (predictions == labels).type(torch.float32).detach().cpu()
+
+    # Sort the confidences
     confidence_ranking = torch.argsort(max_confidence)    
     sorted_confidence = max_confidence[confidence_ranking]
     sorted_correct = correct[confidence_ranking] 
     
-    smooth_filter = get_uniform_filter(1000, predictions.device)
-    make_figure_calibration(smooth_filter(sorted_confidence).cpu(), smooth_filter(sorted_correct).cpu(), plot_ax=plot_ax)   
+    if ax is None: 
+        plt.figure(figsize=(5, 5))
+        ax = plt.gca() 
     
+    # Define a filter that smoothes a sequence
+    bandwidth = int(np.sqrt(len(predictions))) * 3 + 1
+    smooth_filter = _get_uniform_filter(bandwidth, device=torch.device('cpu'))
     
-def plot_calibration_bin(predictions, labels, num_bins=15, ax=None):
+    with torch.no_grad():
+        # Plot the smoothed confidence against the smoothed accuracy
+        ax.plot(smooth_filter(sorted_confidence), smooth_filter(sorted_correct), c='C0')
+    ax.plot([0,1], [0,1], c='C2')
+    ax.set_xlim([-0.01, 1.01])
+    ax.set_ylim([-0.01, 1.01])
+    
+    return ax
+
+
+def plot_reliability_diagram(predictions, labels, ax=None, num_bins=15, binning='adaptive'):
     """ Plot the calibration diagram with binning 
 
     Args:
-        predictions: a batch of categorical predictions with shape [batch_size, num_classes]
-        labels: a batch of labels with shape [batch_size]
-        num_bins: number of bins to plot the categorical 
+        predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        labels (tensor): a batch of labels with shape [batch_size]
+        ax (axes): optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        num_bins (int): number of bins to bin the confidences
+        binning (str): the binning method, can be 'adaptive' or 'uniform'. 
+            For adaptive binning each bin have the same number of data points, 
+            for uniform binning each bin have the same width. 
+        
+    Returns:
+        axes: the ax on which the plot is made
     """
     with torch.no_grad():
-        ranking = torch.argsort(predictions.max(dim=1)[0])
+        # Get the confidence and accuracy
+        confidence = predictions.max(dim=1)[0]
         correct = (predictions.argmax(dim=1) == labels.to(predictions.device)).type(torch.float32)
-        sorted_confidence = predictions.max(dim=1)[0][ranking]
-        sorted_correct = correct[ranking]
-        bin_elem = len(predictions) // num_bins
+
+        # Put the confidences and accuracies into bins
         confidences = []
         accuracy = []
-        for i in range(num_bins):
-            confidences.append(sorted_confidence[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
-            accuracy.append(sorted_correct[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
-        confidence_boundary = sorted_confidence[::bin_elem].cpu()
-        confidences = np.array(confidences)
         
+        if binning == 'adaptive':
+            # In adaptive binning, put all the values into equal width bins
+            # Sort by confidence 
+            ranking = torch.argsort(confidence)
+            sorted_confidence = confidence[ranking]
+            sorted_correct = correct[ranking]
+            
+            # Divide all values into bins
+            bin_elem = len(predictions) // num_bins
+            for i in range(num_bins):
+                confidences.append(sorted_confidence[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
+                accuracy.append(sorted_correct[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
+                confidence_boundary = sorted_confidence[::bin_elem].cpu()
+    
+        elif binning == 'uniform':
+            # In uniform binning, put all the values into evenly spaced bins
+            confidence_boundary = torch.linspace(0, 1, num_bins+1)
+            for i in range(num_bins):
+                index = (confidence >= confidence_boundary[i]) & (confidence < confidence_boundary[i+1])
+                if index.sum() < 5:
+                    # Do not plot the bin unless it contains at least 5 data points. 
+                    confidences.append(np.nan)
+                    accuracy.append(np.nan)
+                else:
+                    confidences.append(confidence[index].mean())
+                    accuracy.append(correct[index].mean())
+        else:
+            assert False, 'binning can only be adaptive or uniform'
+            
+        confidences = np.array(confidences)
+        accuracy = np.array(accuracy)
+        # Set the accuracy = 0 for any bin with insufficient datapoints. This will make them unplotted. 
+        accuracy[np.isnan(accuracy)] = 0.0
+
         if ax is None: 
             plt.figure(figsize=(5, 5))
             ax = plt.gca() 
         
-        plt.bar(x=confidence_boundary[:-1], height=accuracy, 
-                width=confidence_boundary[1:] - confidence_boundary[:-1], alpha=0.5, align='edge')
+        ax.bar(x=confidence_boundary[:-1], height=accuracy, 
+                width=confidence_boundary[1:] - confidence_boundary[:-1], alpha=0.5, align='edge', edgecolor='C0', linewidth=1.5)
         for i in range(num_bins):
-            plt.plot([confidences[i], confidences[i]], [0, accuracy[i]], c='b')
-        plt.plot([0,1], [0,1], c='g')
+            ax.plot([confidences[i], confidences[i]], [0, accuracy[i]], c='C1')
+        ax.plot([0,1], [0,1], c='C2')
+        ax.set_xlim([-0.01, 1.01])
+        ax.set_ylim([-0.01, 1.01])
+        return ax

@@ -45,11 +45,12 @@ def get_gaussian_filter(kernel_size=3, device=None):
     return lambda x: gaussian_filter(x.view(1, 1, -1)).flatten()
 
 
-def get_uniform_filter(kernel_size=3, device=None):
-    op = nn.Conv1d(1, 1, kernel_size, padding_mode='replicate', padding=kernel_size // 2, bias=False)
+def _get_uniform_filter(kernel_size=3, device=None):
+    op = nn.Conv1d(1, 1, kernel_size, padding=0, bias=False) 
+    # op = nn.Conv1d(1, 1, kernel_size, padding_mode='replicate', padding=kernel_size // 2, bias=False)
     op = op.to(device)
-    op.requires_grad = False
     op.weight = nn.Parameter(1./ (kernel_size+1) * torch.ones(1, 1, kernel_size+1, device=device, requires_grad=False))
+    op.requires_grad = False
     return lambda x: op(x.view(1, 1, -1)).flatten()
 
 
