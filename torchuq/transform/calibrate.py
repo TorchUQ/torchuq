@@ -15,12 +15,23 @@ from .utils import PerformanceRecord
 
 
 class TemperatureScaling(Calibrator):
+    """ The class to recalibrate a categorical prediction with temperature scaling 
+    
+    Args:
+        verbose (bool): if verbose=True print non-error messsages 
+    """
     def __init__(self, verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
         super(TemperatureScaling, self).__init__(input_type='categorical')
         self.verbose = verbose
         self.temperature = None
         
     def train(self, predictions, labels, *args, **kwargs):
+        """ Find the optimal temperature with gradient descent. 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+            labels (tensor): a batch of labels with shape [batch_size]
+        """
         # Use gradient descent to find the optimal temperature
         # Can add bisection option in the future, since it should be considerably faster
         self._change_device(predictions) 
@@ -31,20 +42,32 @@ class TemperatureScaling(Calibrator):
         
         log_prediction = torch.log(predictions + 1e-10).detach()
         
-        for iteration in range(100000): # Iterate at most 100k iterations, but expect to stop early
+        # Iterate at most 100k iterations, but expect to stop early
+        for iteration in range(100000):
             optim.zero_grad()
             adjusted_predictions = log_prediction / self.temperature
             loss = F.cross_entropy(adjusted_predictions, labels)
             loss.backward()
             optim.step()
             lr_scheduler.step(loss)
-            if optim.param_groups[0]['lr'] < 1e-6:   # Hitchhike the lr scheduler to terminate if no progress
+            
+            # Hitchhike the lr scheduler to terminate if no progress
+            if optim.param_groups[0]['lr'] < 1e-6:   
                 break
             if self.verbose and iteration % 100 == 0:
                 print("Iteration %d, lr=%.5f, NLL=%.3f" % (iteration, optim.param_groups[0]['lr'], loss.cpu().item()))
-        return self 
     
     def __call__(self, predictions, *args, **kwargs):
+        """ Use the learned temperature to calibrate the predictions. 
+        
+        Only use this after calling TemperatureScaling.train. 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        
+        Returns:
+            tensor: the calibrated categorical prediction, it should have the same shape as the input predictions
+        """
         if self.temperature is None:
             print("Error: need to first train before calling this function")
         self._change_device(predictions)
@@ -52,6 +75,11 @@ class TemperatureScaling(Calibrator):
         return torch.softmax(log_prediction / self.temperature, dim=1)
     
     def to(self, device):
+        """ Move all assets of this class to a torch device. 
+        
+        Args:
+            device (device): the torch device (such as torch.device('cpu'))
+        """
         if self.temperature is not None:
             self.temperature.to(device)
         return self
@@ -59,20 +87,29 @@ class TemperatureScaling(Calibrator):
     
     
 class DirichletCalibrator(Calibrator):
+    """ The class to recalibrate a categorical prediction with dirichlet calibration 
+    
+    Args:
+        verbose (bool): if verbose=True print non-error messsages 
+    """
+    
     def __init__(self, verbose=False):  
         super(DirichletCalibrator, self).__init__(input_type='categorial')
         self.calibrator = None
         self.verbose = verbose
  
-    def train(self, predictions, labels, param_lambda=1e-3, param_mu=0.1, max_epochs=1000):   
-        """
-        Train the Dirichlet calibration map 
-        Inputs:
-            predictions: array [batch_size, n_classes], a batch of categorical probability predictions
-            labels: array [batch_size], a batch of labels
-            param_lambda: the regularization hyper-parameter. According to E.3 of https://arxiv.org/pdf/1910.12656.pdf, the best hyper-parameter is usually 1e-3
-            param__mu: the regularization hyper-parameter 
-            max_epochs: the maximum number of epochs to train the model. This function will usually terminate when training makes no additional progress before max_epochs is reached
+    def train(self, predictions, labels, param_lambda=1e-3, param_mu=0.1, max_epochs=1000, *args, **kwargs):   
+        """ Train the Dirichlet recalibration map 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+            labels (tensor): a batch of labels with shape [batch_size]
+            param_lambda (float): the regularization hyper-parameter. According to E.3 of https://arxiv.org/pdf/1910.12656.pdf, the best hyper-parameter is usually 1e-3
+            param_mu (float): the regularization hyper-parameter. 
+            max_epochs (int): the maximum number of epochs to train the model. This function might terminate when training makes no additional progress before max_epochs is reached
+        
+        Returns:
+            PerformanceRecord: a PerformanceRecord instance with detailed training log 
         """
         self._change_device(predictions)
         
@@ -132,6 +169,16 @@ class DirichletCalibrator(Calibrator):
         return recorder 
                 
     def __call__(self, predictions):
+        """ Use the learned calibration map to calibrate the predictions. 
+        
+        Only use this after calling DirichletCalibrator.train. 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        
+        Returns:
+            tensor: the calibrated categorical prediction, it should have the same shape as the input predictions
+        """
         if self.calibrator is None:
             print("Error: need to first train before calling this function")
         self._change_device(predictions)
@@ -139,22 +186,39 @@ class DirichletCalibrator(Calibrator):
         return torch.softmax(self.calibrator(predictions), dim=-1)
 
     def to(self, device):
+        """ Move all assets of this class to a torch device. 
+        
+        Args:
+            device (device): the torch device (such as torch.device('cpu'))
+        """
         if self.calibrator is not None:
             self.calibrator.to(device)
             
             
 
 class HistogramBinning:
-    def __init__(self, requires_grad=False, adaptive=True, bin_count='auto', verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
+    """ The class to recalibrate a categorical prediction with temperature scaling 
+    
+    Args:
+        adaptive (bool): if adaptive is true, use the same number of samples per bin,
+            if adaptive if false, use equal width bins
+        bin_count (int or str): the number of bins, if 'auto' set the number of bins automatically as sqrt(number of samples) / 5 
+        verbose (bool): if verbose=True print non-error messsages 
+    """
+    def __init__(self, adaptive=True, bin_count='auto', verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
         self.adaptive = adaptive
         self.bin_count = bin_count
         self.verbose = verbose
         self.bin_boundary = None
         self.bin_adjustment = None
-        assert not requires_grad, "Histogram binning does not support gradient with respect to HB parameters"
 
-    # side_feature is not used
-    def train(self, predictions, labels, side_feature=None):
+    def train(self, predictions, labels, *args, **kwargs):
+        """ Train the recalibration map 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+            labels (tensor): a batch of labels with shape [batch_size]
+        """
         with torch.no_grad():
             # Get the maximum confidence prediction and its confidence
             max_confidence, prediction = predictions.max(dim=1)
@@ -187,6 +251,16 @@ class HistogramBinning:
             self.bin_adjustment = diff.view(self.bin_count, -1).mean(dim=1)
 
     def __call__(self, predictions, side_feature=None):
+        """ Use the learned calibration map to calibrate the predictions. 
+        
+        Only use this after calling HistogramBinning.train. 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        
+        Returns:
+            tensor: the calibrated categorical prediction, it should have the same shape as the input predictions
+        """
         if self.bin_boundary is None:
             print("Error: need to first call ConfidenceHBCalibrator.train before calling this function")
         with torch.no_grad():
@@ -197,14 +271,21 @@ class HistogramBinning:
             
             index = (max_confidence < tiled_boundary).type(torch.float32)
             index = index[:, 1:] - index[:, :-1]
-#             print(index.shape)
-            
-#             print(index.sum(dim=1))
+
             adjustment = (tiled_adjustment * index).sum(dim=1)
-            # print(adjustment.shape)
 
         predictions = predictions + adjustment.view(-1, 1) / (predictions.shape[1] - 1)
         predictions[torch.arange(len(predictions)), max_index] -= adjustment 
         return predictions
     
     
+    def to(self, device):
+        """ Move all assets of this class to a torch device. 
+        
+        Args:
+            device (device): the torch device (such as torch.device('cpu'))
+        """
+        if self.bin_boundary is not None:
+            self.bin_boundary.to(device)
+        if self.bin_adjustment is not None:
+            self.bin_adjustment.to(device)
