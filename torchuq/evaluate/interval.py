@@ -8,14 +8,52 @@ from .utils import metric_plot_colors as mcolors
 from .utils import _compute_reduction
 
 
+
+    
+def compute_length(predictions, reduction='mean'):
+    """
+    Compute the average length of an interval prediction
+    
+    If the interval has inf length then 
+    
+    Args:
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        
+    Returns:
+        tensor: the interval length, an array with shape [batch_size] or shape [] depending on the reduction.
+    """
+    length = (predictions[:, 1] - predictions[:, 0]).abs()
+    return _compute_reduction(length, reduction)
+
+
+def compute_coverage(predictions, labels, reduction='mean'):
+    """
+    Compute the empirical coverage. This function is not differentiable 
+    
+    Args:
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
+        labels (tensor): the labels, an array of shape [batch_size]
+        reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
+        
+    Returns:
+        tensor: the coverage, an array with shape [batch_size] or shape [] depending on the reduction.
+    """
+    coverage = (labels >= predictions.min(dim=1)[0]).type(torch.float32) * (labels <= predictions.max(dim=1)[0]).type(torch.float32)
+    return _compute_reduction(coverage, reduction)
+
+
 def plot_interval_sequence(predictions, labels=None, ax=None, max_count=100):
     """ Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
     
     Args:
-        predictions: required array [batch_size, 2] instance, a batch of interval predictions
-        labels: optinal array [batch_size], the labels
-        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        max_count: optional int, the maximum number of PDFs to plot
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
+        labels (tensor): the labels, an array of shape [batch_size]
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        max_count (int): the maximum number of intervals to plot
+        
+    Returns:
+        axes: the ax on which the plot is made
     """
     # Plot at most max_count predictions
     if len(labels) <= max_count:
@@ -57,40 +95,20 @@ def plot_interval_sequence(predictions, labels=None, ax=None, max_count=100):
     ax.set_ylim([min_y, max_y])
     ax.tick_params(axis='both', which='major', labelsize=14)
     
-    
-def compute_length(predictions, reduction='mean'):
-    """
-    Compute the average length of an interval prediction
-    
-    If the interval has inf length then 
-    
-    Args:
-        predictions: a batch of distribution predictions
-        
-    Returns:
-        length, 
-    """
-    length = (predictions[:, 1] - predictions[:, 0]).abs()
-    return _compute_reduction(length, reduction)
+    return ax 
 
 
-def compute_coverage(predictions, labels, reduction='mean'):
-    """
-    Compute the empirical coverage. This function is not differentiable 
-    
-    """
-    coverage = (labels >= predictions.min(dim=1)[0]).type(torch.float32) * (labels <= predictions.max(dim=1)[0]).type(torch.float32)
-    return _compute_reduction(coverage, reduction)
-
-
-    
 def plot_length_cdf(predictions, ax=None, plot_median=True):
     """ 
     Plot the CDF of interval length
     
     Args:
-        predictions: required array [batch_size, 2] instance, a batch of interval predictions
-        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        predictions (tensor): a batch of interval predictions, which is an array [batch_size, 2] 
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        plot_median (bool): if true plot the median interval length. 
+        
+    Returns:
+        axes: the ax on which the plot is made
     """
     length = torch.sort((predictions[:, 1] - predictions[:, 0]).abs())[0]
     
