@@ -188,3 +188,39 @@ def ensemble_to_distribution(predictions):
     sigma_combined = ((sigmas.pow(2) + means.pow(2)).mean(dim=0) - mean_combined.pow(2)).pow(0.5)
     return Normal(loc=mean_combined, scale=sigma_combined)
 
+
+
+def categorical_to_set(predictions, threshold=0.95):
+    """ Convert a categorical prediction to a set prediction by taking the labels with highest probability until their total probability exceeds threshold
+    
+    This function is not differentiable. 
+    
+    Args:
+        predictions (tensor): a batch of categorical predictions.
+        threshold (float): the minimum probability of the confidence set.
+    
+    Returns:
+        tensor: the set prediction. 
+    """
+    # A cutoff of shape [batch_size, 1], the extra dimension of 1 is for shape inference
+    # We are going to use binary search to find the cut-off threshold for each sample
+    cutoff_ub = torch.ones_like(predictions[:, 0:1]) 
+    cutoff_lb = torch.zeros_like(predictions[:, 0:1])
+    
+    # Run 20 iterations, each iteration is guaranteed to reduce the cutoff range by half.
+    # Therefore, after 20 iterations, the cut-off should be accurate up to 1e-6 which should be sufficient. 
+    for iteration in range(20): 
+        cutoff = (cutoff_lb + cutoff_ub) / 2
+        
+        # The current total probability if we take every label that has greater probability than cutoff
+        total_prob = (predictions * (predictions >= cutoff)).sum(dim=1, keepdims=True)  
+        
+        # If the current total probability is too large, increase the lower bound (i.e higher cut-off)
+        cutoff_lb[total_prob > threshold] = cutoff[total_prob > threshold]
+        
+        # If the current total probability is too small, decrease the upper bound (i.e. lower cut-off)
+        cutoff_ub[total_prob <= threshold] = cutoff[total_prob <= threshold] 
+    # Return the final result based on current cut-off
+    # It is extremely important to use the cutoff_lb instead of ub
+    # This ensures that the total probability is at least threshold (rather than at most threshold)
+    return (predictions >= cutoff_lb).type(torch.int)
