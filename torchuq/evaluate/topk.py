@@ -13,8 +13,16 @@ def compute_accuracy(predictions, labels):
     Args:
         predictions (tensor): a batch of topk predictions with shape [batch_size] or [batch_size, k]
         labels (tensor): a batch of labels with shape [batch_size]
+        
+    Returns:
+        tensor: the accuracy, a tensor of shape []. 
     """
-    return 
+    if len(predictions.shape) == 1:
+        predictions = predictions.view(-1, 1)
+    
+    # Compute if the label matches each of the k predictions
+    correct = (labels.view(-1, 1) == predictions).type(torch.int).max(dim=1)[0]
+    return correct.type(torch.float).mean()
     
     
 def plot_confusion_matrix(predictions, labels, ax=None, label_values=True):
