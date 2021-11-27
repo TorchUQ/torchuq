@@ -1,18 +1,15 @@
 from matplotlib import pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-from sklearn.isotonic import IsotonicRegression
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.optim import lr_scheduler
 import numpy as np
 from .utils import _get_uniform_filter
-
+from .topk import plot_confusion_matrix as plot_confusion_matrix_topk
 
 
     
-def compute_ece(predictions, labels):
+def compute_ece_smooth(predictions, labels):
     max_confidence, prediction = predictions.max(dim=1)
     correct = (prediction == labels).type(torch.float32)
     confidence_ranking = torch.argsort(max_confidence)    
@@ -20,6 +17,31 @@ def compute_ece(predictions, labels):
     sorted_correct = correct[confidence_ranking] 
     smooth_filter = get_uniform_filter(1000, predictions.device)
     return (smooth_filter(sorted_confidence) - smooth_filter(sorted_correct)).abs().mean()
+
+
+def compute_ece(predictions, labels):
+    confidence = predictions.max(dim=1)[0]
+    correct = (predictions.argmax(dim=1) == labels.to(predictions.device)).type(torch.float32)
+
+    # Put the confidences and accuracies into bins
+    confidences = []
+    accuracy = []
+
+    # Sort by confidence 
+    ranking = torch.argsort(confidence)
+    sorted_confidence = confidence[ranking]
+    sorted_correct = correct[ranking]
+
+    # Divide all values into bins
+    bin_elem = int(np.ceil(len(predictions) / num_bins))
+    for i in range(num_bins):
+        confidence_bin = sorted_confidence[::bin_elem].mean()
+        accuracy_bin = sorted_correct[::bin_elem].mean()
+        confidence_bin - accuracy_bin
+        
+        accuracy.append(sorted_correct[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
+    
+       
 
 
 def compute_accuracy(predictions, labels):
@@ -63,6 +85,24 @@ def _plot_calibration_diagram_naf(predictions, labels, verbose=False):
         make_figure_calibration(torch.linspace(0, 1, 1000), output.flatten())
 
         
+def plot_confusion_matrix(predictions, labels, ax=None, label_values=True):
+    """ Plot the confusion matrix.
+    
+    Among the samples where the prediction = class i, how many labels belong to class j. 
+
+    Args:
+        predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        labels (tensor): a batch of labels with shape [batch_size]
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size 
+        label_values (bool): if set to true, label all the values with text. 
+        
+    Returns:
+        axes: the ax on which the plot is made
+    """
+    predictions_max = torch.argmax(predictions, dim=1)
+    return plot_confusion_matrix_topk(predictions_max, labels, ax, label_values)
+
+
 def plot_reliability_diagram_smooth(predictions, labels, ax=None):
     """ Plot the reliability diagram with smoothing
 
@@ -98,7 +138,10 @@ def plot_reliability_diagram_smooth(predictions, labels, ax=None):
     ax.plot([0,1], [0,1], c='C2')
     ax.set_xlim([-0.01, 1.01])
     ax.set_ylim([-0.01, 1.01])
+    ax.tick_params(axis='both', which='major', labelsize=14)
     
+    ax.set_xlabel('confidence', fontsize=14)
+    ax.set_ylabel('accuracy', fontsize=14)
     return ax
 
 
@@ -171,4 +214,8 @@ def plot_reliability_diagram(predictions, labels, ax=None, num_bins=15, binning=
         ax.plot([0,1], [0,1], c='C2')
         ax.set_xlim([-0.01, 1.01])
         ax.set_ylim([-0.01, 1.01])
+        ax.tick_params(axis='both', which='major', labelsize=14)
+        ax.set_xlabel('confidence', fontsize=14)
+        ax.set_ylabel('accuracy', fontsize=14)
+
         return ax
