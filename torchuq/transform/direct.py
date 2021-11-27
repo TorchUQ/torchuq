@@ -224,3 +224,21 @@ def categorical_to_set(predictions, threshold=0.95):
     # It is extremely important to use the cutoff_lb instead of ub
     # This ensures that the total probability is at least threshold (rather than at most threshold)
     return (predictions >= cutoff_lb).type(torch.int)
+
+
+def categorical_to_topk(predictions, k=1):
+    """ Convert a categorical prediction to a a top-k prediction by taking the k indices with largest probability
+    
+    This function is not differentiable. 
+    
+    Args:
+        predictions (tensor): a batch of categorical predictions.
+        k (int): the number of predicted labels.
+    
+    Returns:
+        tensor: the topk prediction. 
+    """
+    topk = torch.topk(predictions, k, dim=1)[0]
+    if k == 1:
+        topk = topk.flatten()
+    return topk
