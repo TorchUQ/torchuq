@@ -238,7 +238,7 @@ def categorical_to_topk(predictions, k=1):
     Returns:
         tensor: the topk prediction. 
     """
-    topk = torch.topk(predictions, k, dim=1)[0]
+    topk = torch.topk(predictions, k, dim=1)[1]
     if k == 1:
         topk = topk.flatten()
     return topk
