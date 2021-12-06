@@ -1,7 +1,7 @@
 
 # Basic Design Philosophy and Usage
 
-The core of torchuq consists of the following three components: prediction types, evaluation and transform.
+The core of torchuq consists of the following three components: prediction types, evaluation and transformation.
 
 ## 1. Prediction types 
 
@@ -11,11 +11,13 @@ Before we start to work with any predictions we must think about how to represen
 
 - For a list of types supported for classification problems, see [link] 
 
-- In the next major update, we intend to support additional prediction types, such as multi-variate predictions. 
+In the next major update, we intend to support additional prediction types, such as multi-variate predictions. 
 
 ## 2. Evaluation Metrics 
 
-All evaluation metrics are in the torchuq.evaluate sub-module. There are two main types of evaluations: computing a metric or making a visualization plot. 
+Given a prediction, we will want to evaluate how good it is at capturing the ground truth. In Torchuq all evaluation functions are in the ```torchuq.evaluate```  sub-module, organized by prediction type. For example, functions that evaluate a categorical prediction are in the ```torchuq.evaluate.categorical``` sub-module, and functions that evaluate a distribution prediction are in the ```torchuq.evaluate.distribution``` sub-module. 
+
+There are two ways to evaluate predictions: by computing a metric (such as the L2 loss or the log-likelihood), or by a visualization plot (such as the reliability diagram). 
 
 ### 2.1 Computing a metric 
 
@@ -51,27 +53,27 @@ Most visualization functions take three arguments (but some may take more or les
 
 ## 3. Transform
 
-### 3.1 Simple Transform
+The final and key component of torchuq is transformation. We will want to transform low quality predictions (such as uncalibrated predictions) into new high quality predictions, usually with the help of some data. 
 
-Depending on the different requirements during training/deployment, we might want to convert between different prediction types. For example, we might initially start from an ensemble prediction (maybe because we trained multiple prediction models), then convert it into a cumulative density function prediction or a point prediction (which are more interpretable and easier to work with). 
+The main workhorse for transformation is the Calibrator abstract class, which defines a unified interface for an extremely large collection of calibration algorithms (including standard calibration algorithms, conformal prediction, decision calibration, multi-calibration, and many more).
 
-Torchuq supports conversion whenever the conversion makes sense. For details see [link] 
+![Calibration Illustration](../illustrations/calibrator.png)
 
-### 3.2 Calibrator
+A calibrator class has three main functions: 
 
-The calibrator class consists of three main functions. 
+1. ```Calibrator.__init__```(input_type='auto')
 
-```Calibrator.__init__```(input_type='auto')
+The initialization function can take optional arguments, but has only one required argument, which is the input type --- it can be any of the prediction types in the previous section. 
 
-Input type can be any of the prediction types in the previous section. 
+2. ``` Calibrator.train(predictions, labels, side_feature=None) ```
 
-``` Calibrator.train(predictions, labels, side_feature=None) ```
+The ```Calibrator.train``` function uses the training data to learn any parameters that is necessary to transform a low quality prediction into a high quality prediction. It takes as input a set of predictions and the corresponding labels. In addition, a few recalibration algorithms --- such as group calibration or multicalibration --- can take as input additional side features, and the transformation depends on the side feature. 
 
-In addition, because many recalibration algorithms (such as group calibration or multicalibration allow additional side features, we also allow an additional argument side_feature. Most recalibration algorithms do not use it, hence we do not consider it.)
+3. ```Calibrator.__call__(predictions, side_feature=None)```
 
+To use the learned calibrator to transform new data, simply run ```Calibrator(new_prediction)```. Note that several calibrator can transform a prediction into a different type. For example, the ```ConformalCalibrator``` class takes as input an original prediction of any type, and outputs new predictions that are distributions.  
 
-
-```Calibrator.__call__(predictions, side_feature=None)```
+### Example
 
 For example, to use temperature scaling to recalibrate a categorical prediction use 
 
@@ -81,8 +83,12 @@ calibrator.train(predictions, labels)
 predictions_ts = calibrator(predictions)
 ```
 
+
+###  Online Prediction 
+
 Finally many algorithms can be used in the online prediction setup, where data becomes available in a sequential order and can be used to update the best predictor for future data. This is achieved by 
 
 ```Calibrator.update(predictions, labels, side_feature=None) ```
 
-which works in the same way as ```calibrator.train``` but should update the calibrator with additional data. For an online prediction example see [link]. 
+This function works in the same way as ```calibrator.train```--- except that instead of training the calibrator from scratch, it updates the calibrator with the new data. For an online prediction example see [link]. 
+
