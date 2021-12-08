@@ -19,7 +19,19 @@ def compute_ece_smooth(predictions, labels):
     return (smooth_filter(sorted_confidence) - smooth_filter(sorted_correct)).abs().mean()
 
 
-def compute_ece(predictions, labels):
+def compute_ece(predictions, labels, num_bins=15):
+    """
+    Compute the expected calibration error by binning. 
+    
+    Args:
+        predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        labels (tensor): a batch of labels with shape [batch_size]
+        num_bins (int): the number of bins when computing the ECE. 
+            15 bins is common in prior literature, but it should be more when there is more data, and fewer when there is less data. 
+        
+    Returns:
+        tensor: the computed ECE value. 
+    """
     confidence = predictions.max(dim=1)[0]
     correct = (predictions.argmax(dim=1) == labels.to(predictions.device)).type(torch.float32)
 
@@ -60,6 +72,9 @@ def compute_classwise_ece(predictions, labels):
 
 
 def _plot_calibration_diagram_naf(predictions, labels, verbose=False):
+    """
+    Deprecated function for plotting the calibration diagram
+    """
     max_confidence, prediction = predictions.max(dim=1)
     correct = (prediction == labels).type(torch.float32)
     confidence_ranking = torch.argsort(max_confidence)    
