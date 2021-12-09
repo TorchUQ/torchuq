@@ -20,21 +20,19 @@ from ..evaluate.distribution import compute_std, compute_mean_std
         
             
 class DistributionConformal:
-    """
-    Abstract baseclass for a distribution that arises from conformal calibration. 
+    """ Abstract base class for a distribution that arises from conformal calibration. 
     This class behaves like torch.distribution.Distribution, and supports the cdf, icdf and rsample functions. 
+    
+    Args:
+        val_predictions: a set of validation predictions, the type must be compatible with score_func 
+        val_labels: array [validation_batch_shape], a batch of labels
+        test_predictions: a set of test predictions, the type must be compatible with score func
+        score_func: non-conformity score function. A function that take as input a batched predictions q, and an array v of values with shape [n_evaluations, batch_shape] 
+            returns an array s of shape [n_evaluations, batch_shape] where s_{ij} is the score of v_{ij} under prediction q_j 
+        iscore_func: inverse non-conformity score function: a function that take as input a batched prediction q, and an array s os scores with shape [n_evaluations, batch_shape] 
+            returns an array v of shape [n_evaluations, batch_shape] which is the inverse of score_func (i.e. iscore_func(q, score_func(q, v)) = v)
     """
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func):
-        """
-        Inputs:
-            val_predictions: a set of validation predictions, the type must be compatible with score_func 
-            val_labels: array [validation_batch_shape], a batch of labels
-            test_predictions: a set of test predictions, the type must be compatible with score func
-            score_func: non-conformity score function. A function that take as input a batched predictions q, and an array v of values with shape [n_evaluations, batch_shape] 
-            returns an array s of shape [n_evaluations, batch_shape] where s_{ij} is the score of v_{ij} under prediction q_j 
-            iscore_func: inverse non-conformity score function: a function that take as input a batched prediction q, and an array s os scores with shape [n_evaluations, batch_shape] 
-            returns an array v of shape [n_evaluations, batch_shape] which is the inverse of score_func (i.e. iscore_func(q, score_func(q, v)) = v)
-        """
         self.score = score_func 
         self.iscore = iscore_func 
         self.test_predictions = test_predictions 
@@ -61,6 +59,11 @@ class DistributionConformal:
                 self.iscore = partial(iscore_func, min_search=min_search, max_search=max_search)
             
     def to(self, device):
+        """ Move this class and all the tensors it owns to a specified device. 
+        
+        Args:
+            device (torch.device): the device to move this class to. 
+        """
         if self.device != device:
             self.device = device
             self.val_scores = self.val_scores.to(device)
@@ -68,22 +71,49 @@ class DistributionConformal:
     
     
     def rsample(self, sample_shape=torch.Size([])):
-        """
-        Draw a set of samples from the distribution
+        """ Generates a sample_shape shaped (batch of) sample. 
+        
+        Args:
+            sample_shape (torch.Size): the shape of the samples.
+            
+        Returns:
+            tensor: the drawn samples. 
         """
         rand_vals = torch.rand(list(sample_shape) + [self.batch_shape[0]])
         return self.icdf(rand_vals.view(-1, self.batch_shape[0])).view(rand_vals.shape)
     
     def sample(self, sample_shape=torch.Size([])):
+        """ Generates a sample_shape shaped (batch of) sample. 
+        
+        Args:
+            sample_shape (torch.Size): the shape of the samples.
+            
+        Returns:
+            tensor: the drawn samples. 
+        """
         return self.rsample(sample_shape)
     
     def sample_n(self, n):
+        """ Generates n batches of samples. 
+        
+        Args:
+            n (int): the number of batches of samples. 
+            
+        Returns:
+            tensor: the drawn samples. 
+        """
         return self.rsample(torch.Size([n]))
     
-    def log_prob(self, value):
-        """
-        Compute the log probability. This default implementation is not great as it is numerically unstable and require tricks to not throw faults. 
-        """
+    def log_prob(self, value):        
+        """ Returns the log of the probability density evaluated at value.
+        
+        Args:
+            value (tensor): the values to evaluate the ICDF. 
+            
+        Returns:
+            tensor: the evaluated log_prob. 
+        """ 
+        # This implementation will be improved in the future as it is numerically unstable and require tricks to not throw faults. 
 #         # Get the shape 
 #         shape = e
 #         eps = self.test_std * 1e-3   # Use the same unit as the std 
@@ -92,8 +122,7 @@ class DistributionConformal:
         return torch.log(self.cdf(value + eps) - self.cdf(value) + 1e-10) - math.log(eps)
     
     def shape_inference(self, value):
-        """ 
-        Handle all unusual shapes 
+        """ Change the shape of the input into a canonical shape
         """
         # Enumerate all the valid input shapes for value
         if type(value) == int or type(value) == float:  
@@ -109,6 +138,7 @@ class DistributionConformal:
         else:
             assert False, "Shape [%s] invalid" % ', '.join([str(shape) for shape in value.shape])
             
+
 class DistributionConformalLinear(DistributionConformal):
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func, verbose=False):
         super(DistributionConformalLinear, self).__init__(val_predictions, val_labels, test_predictions, score_func, iscore_func)
