@@ -18,24 +18,55 @@ from .. import _implicit_quantiles, _get_prediction_device, _move_prediction_dev
 from ..evaluate.distribution import compute_std, compute_mean_std
 
         
-    
-class DistributionBase:
-    """ Abstract baseclass for a distribution that arises from conformal calibration. 
-    
+            
+class DistributionConformal:
+    """
+    Abstract baseclass for a distribution that arises from conformal calibration. 
     This class behaves like torch.distribution.Distribution, and supports the cdf, icdf and rsample functions. 
-    """ 
-    def __init__(self):
-        pass
+    """
+    def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func):
+        """
+        Inputs:
+            val_predictions: a set of validation predictions, the type must be compatible with score_func 
+            val_labels: array [validation_batch_shape], a batch of labels
+            test_predictions: a set of test predictions, the type must be compatible with score func
+            score_func: non-conformity score function. A function that take as input a batched predictions q, and an array v of values with shape [n_evaluations, batch_shape] 
+            returns an array s of shape [n_evaluations, batch_shape] where s_{ij} is the score of v_{ij} under prediction q_j 
+            iscore_func: inverse non-conformity score function: a function that take as input a batched prediction q, and an array s os scores with shape [n_evaluations, batch_shape] 
+            returns an array v of shape [n_evaluations, batch_shape] which is the inverse of score_func (i.e. iscore_func(q, score_func(q, v)) = v)
+        """
+        self.score = score_func 
+        self.iscore = iscore_func 
+        self.test_predictions = test_predictions 
+        self.device = _get_prediction_device(test_predictions)
         
+        with torch.no_grad():
+            self.batch_shape = self.score(test_predictions, torch.zeros(1, 1, device=self.device)).shape[1:2]  # A hack to find out the number of distributions
+            
+            # Compute the scores for all the predictions in the validation set and sort them from small to large
+            val_scores = self.score(val_predictions, val_labels.view(1, -1)).flatten()
+            # Need to fix this: To avoid numerical instability neighboring values should not be too similar, maybe add a tiny biy of noise 
+            val_scores = val_scores.sort()[0] 
+            # Prepend the 0 quantile and append the 1 quantile for convenient handling of boundary conditions
+            self.val_scores = torch.cat([val_scores[:1] - (val_scores[1:] - val_scores[:-1]).mean(dim=0, keepdims=True), 
+                                         val_scores, 
+                                         val_scores[-1:] + (val_scores[1:] - val_scores[:-1]).mean(dim=0, keepdims=True)])   
+        # self.test_std = compute_std(self) + 1e-10  # This is the last thing that can be called 
+             
+            if iscore_func == _conformal_iscore_ensemble:
+                min_label = val_labels.min()
+                max_label = val_labels.max()
+                min_search = min_label - (max_label - min_label)
+                max_search = max_label + (max_label - min_label)
+                self.iscore = partial(iscore_func, min_search=min_search, max_search=max_search)
+            
     def to(self, device):
-        assert False, "to not implemented" 
-        
-    def cdf(self, value):
-        assert False, "cdf not implemented"
-        
-    def icdf(self, value):
-        assert False, "icdf not implemented"
-        
+        if self.device != device:
+            self.device = device
+            self.val_scores = self.val_scores.to(device)
+            self.test_predictions = _move_prediction_device(self.test_predictions, device)
+    
+    
     def rsample(self, sample_shape=torch.Size([])):
         """
         Draw a set of samples from the distribution
@@ -78,56 +109,6 @@ class DistributionBase:
         else:
             assert False, "Shape [%s] invalid" % ', '.join([str(shape) for shape in value.shape])
             
-            
-class DistributionConformal(DistributionBase):
-    """
-    Abstract baseclass for a distribution that arises from conformal calibration. 
-    This class behaves like torch.distribution.Distribution, and supports the cdf, icdf and rsample functions. 
-    """
-    def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func):
-        """
-        Inputs:
-            val_predictions: a set of validation predictions, the type must be compatible with score_func 
-            val_labels: array [validation_batch_shape], a batch of labels
-            test_predictions: a set of test predictions, the type must be compatible with score func
-            score_func: non-conformity score function. A function that take as input a batched predictions q, and an array v of values with shape [n_evaluations, batch_shape] 
-            returns an array s of shape [n_evaluations, batch_shape] where s_{ij} is the score of v_{ij} under prediction q_j 
-            iscore_func: inverse non-conformity score function: a function that take as input a batched prediction q, and an array s os scores with shape [n_evaluations, batch_shape] 
-            returns an array v of shape [n_evaluations, batch_shape] which is the inverse of score_func (i.e. iscore_func(q, score_func(q, v)) = v)
-        """
-        super(DistributionConformal, self).__init__()
-        self.score = score_func 
-        self.iscore = iscore_func 
-        self.test_predictions = test_predictions 
-        self.device = _get_prediction_device(test_predictions)
-        
-        with torch.no_grad():
-            self.batch_shape = self.score(test_predictions, torch.zeros(1, 1, device=self.device)).shape[1:2]  # A hack to find out the number of distributions
-            
-            # Compute the scores for all the predictions in the validation set and sort them from small to large
-            val_scores = self.score(val_predictions, val_labels.view(1, -1)).flatten()
-            # Need to fix this: To avoid numerical instability neighboring values should not be too similar, maybe add a tiny biy of noise 
-            val_scores = val_scores.sort()[0] 
-            # Prepend the 0 quantile and append the 1 quantile for convenient handling of boundary conditions
-            self.val_scores = torch.cat([val_scores[:1] - (val_scores[1:] - val_scores[:-1]).mean(dim=0, keepdims=True), 
-                                         val_scores, 
-                                         val_scores[-1:] + (val_scores[1:] - val_scores[:-1]).mean(dim=0, keepdims=True)])   
-        # self.test_std = compute_std(self) + 1e-10  # This is the last thing that can be called 
-             
-            if iscore_func == _conformal_iscore_ensemble:
-                min_label = val_labels.min()
-                max_label = val_labels.max()
-                min_search = min_label - (max_label - min_label)
-                max_search = max_label + (max_label - min_label)
-                self.iscore = partial(iscore_func, min_search=min_search, max_search=max_search)
-            
-    def to(self, device):
-        if self.device != device:
-            self.device = device
-            self.val_scores = self.val_scores.to(device)
-            self.test_predictions = _move_prediction_device(self.test_predictions, device)
-    
-    
 class DistributionConformalLinear(DistributionConformal):
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func, verbose=False):
         super(DistributionConformalLinear, self).__init__(val_predictions, val_labels, test_predictions, score_func, iscore_func)
