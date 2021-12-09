@@ -14,8 +14,12 @@ import matplotlib.pyplot as plt
 import os, sys, shutil, copy, time, random
 from .basic import Calibrator   # Note can use from .basic import Calibrator
 from .. import _get_prediction_device
-
-
+from ..evaluate.decision import compute_decision_loss_random
+from ..evaluate.categorical import compute_accuracy
+from .utils import PerformanceRecord
+    
+    
+    
 class CriticDecision(nn.Module):
     def __init__(self, num_classes=1000, num_action=2):
         super(CriticDecision, self).__init__()
@@ -72,17 +76,26 @@ class CriticDecision(nn.Module):
     
     
 class DecisionCalibrator(Calibrator):
+    """ Recalibrate a categorical prediction to achieve decision calibration. 
+    
+    Args: 
+        verbose (bool): if set to True than print additional performance information during training
+    """
     def __init__(self, verbose=True, save_path=None):
-        """
-        Inputs: 
-            verbose (boolean): if set to True than print performance during training
-        """
         super(DecisionCalibrator, self).__init__()
         self.critics = []
         self.verbose = verbose
         self.save_path = save_path
         
     def __call__(self, predictions, max_critic=-1, *args, **kwargs):
+        """ Use the learned recalibration map to transform predictions into decision-calibrated new predictions. 
+        
+        Args:
+            predictions (tensor): a batch of categorical predictions.
+            
+        Returns:
+            tensor: the transformed predictions. 
+        """
         self.to(predictions)
         for index, critic in enumerate(self.critics):
             if index == max_critic:
@@ -93,9 +106,9 @@ class DecisionCalibrator(Calibrator):
         return predictions.clamp(min=1e-7, max=1-1e-7)
             
     def to(self, device):
-        """ 
-        Move every torch tensor owned by this class to a new device 
-        Inputs:
+        """ Move every torch tensor owned by this class to a new device 
+        
+        Args:
             device: a torch.device instance, alternatively it could be a torch.Tensor or a prediction object
         """
         if not type(device).__name__ == 'device':
@@ -110,7 +123,7 @@ class DecisionCalibrator(Calibrator):
         """ Train the decision calibrator for calib_steps. 
         If you call this function multiple times, this function does not erase previously trained calibration maps, and only appends additional recalibration steps
         
-        Arguments:
+        Args:
             predictions (tensor(batch_size, num_classes)): a categorical probability prediction 
             labels (tensor(batch_size)): an array of int valued labels
             calib_steps (int): number of calibration iterations (this is the number of iteration steps in Algorithm 2 of the paper)
@@ -122,10 +135,6 @@ class DecisionCalibrator(Calibrator):
         Returns:
             recorder: a PerformanceRecord object, the measured performance 
         """
-        
-        from torchuq.metric.decision import compute_decision_loss_random
-        from torchuq.metric.categorical import compute_accuracy
-        from torchuq.transform.utils import PerformanceRecord
         
         self.to(predictions)
         labels = labels.to(self.device)
