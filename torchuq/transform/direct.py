@@ -6,10 +6,27 @@ from ..evaluate.distribution import compute_mean, compute_std, plot_density_sequ
 
 
 def distribution_to_particle(predictions, n_particles=50):
+    """ Convert a distribution prediction to a particle prediction
+    
+    Args:
+        predictions (Distribution): a batch of distribution predictions. 
+        n_particles (int): the number of particles to sample. 
+    
+    """
     return predictions.sample((n_particles,)).permute(1, 0)
 
 
 def distribution_to_quantile(predictions, quantiles=None, n_quantiles=None):
+    """ Convert a distribution prediction to a quantile prediction 
+    
+    Args:
+        predictions (Distribution): a batch of distribution predictions
+        quantiles (tensor): a set of quantiles. One and only one of quantiles or n_quantiles can be specified (the other should be None). 
+        n_quantiles (int): the number of quantiles. 
+        
+    Returns:
+        tensor: a batch of quantile predictions. 
+    """
     assert n_quantiles is None or quantiles is None, "Cannot specify the quantiles or n_quantiles simultaneously"
     assert n_quantiles is not None or quantiles is not None, "Must specify either quantiles or n_quantiles"
 
@@ -27,10 +44,14 @@ def distribution_to_quantile(predictions, quantiles=None, n_quantiles=None):
     
     
 def distribution_to_point(predictions, functional='mean'):
-    """
-    Convert a probability distribution to a point prediction 
-    Input:
-        functional: can be mean or median
+    """Convert a distribution prediction to a point prediction by taking the mean or the median
+    
+    Args:
+        predictions (Distribution): a batch of distribution predictions.
+        functional (str): can be 'mean' or 'median'.
+        
+    Returns:
+        tensor: a batch of point predictions. 
     """
     assert functional == 'mean' or functional == 'median'
     if functional == 'mean':
@@ -40,6 +61,15 @@ def distribution_to_point(predictions, functional='mean'):
 
 
 def distribution_to_interval(predictions, confidence=0.95):
+    """ Convert a distribution prediction to an interval prediction by finding the smallest interval
+    
+    Args:
+        predictions (Distribution): a batch of distribution predictions
+        confidence (float): the probability of the credible interval. 
+    
+    Returns:
+        tensor: a batch of interval predictions 
+    """
     # Grid search the best interval with the minimum average length 
     l_start = 0.0
     r_start = 1-confidence
@@ -58,17 +88,17 @@ def distribution_to_interval(predictions, confidence=0.95):
 
 
 class DistributionKDE:
-    def __init__(self, loc, scale, weight=None):
-        """ 
-        Define a distribution given by a mixture of Gaussian 
-        Even though pytorch has native support for mixture distribution, it does not have an icdf method which is crucial and difficult to implement
-        This implementation includes an icdf function 
+    """ A mixture of Gaussian distribution 
+    
+    Even though pytorch has native support for mixture distribution, it does not have an icdf method which is crucial and difficult to implement
+    This implementation includes an icdf function 
         
-        Input:
-            loc: array [batch_size, n_components], the set of centers of the Gaussian distributions
-            scale: array [batch_size, n_components], the set of stddev of the Gaussian distributions
-            weight: array [batch_size, n_components], the weight of each mixture component. If set to None then all mixture components have the same weight
-        """
+    Args:
+        loc (tensor): array [batch_size, n_components], the set of centers of the Gaussian distributions
+        scale (tensor): array [batch_size, n_components], the set of stddev of the Gaussian distributions
+        weight (tensor): array [batch_size, n_components], the weight of each mixture component. If set to None then all mixture components have the same weight
+    """    
+    def __init__(self, loc, scale, weight=None):
         self.loc = loc
         self.scale = scale
         if weight is None:
@@ -83,9 +113,13 @@ class DistributionKDE:
         self.batch_shape = loc.shape[0]
         
     def cdf(self, value):
-        """
-        Inputs:
-            val: an array of shape [batch_size], [1] or [num_cdfs, batch_size]
+        """ Computes the cumulative density evaluated at value
+        
+        Args:
+            value (tensor): an array of shape [batch_size], [1] or [num_cdfs, batch_size]
+        
+        Returns:
+            tensor: the evaluated CDF. 
         """
         cdf = self.normals.cdf(value.unsqueeze(-1))  # This should have shape [..., batch_size, n_components]
         
@@ -95,6 +129,14 @@ class DistributionKDE:
         return (cdf * weight).sum(dim=-1)  
     
     def log_prob(self, value):
+        """ Computes the log likelihood evaluated at value 
+        
+        Args:
+            value (tensor): an array of shape [batch_size], [1] or [num_cdfs, batch_size]
+        
+        Returns:
+            tensor: the evaluated log probability. 
+        """
         log_prob = self.normals.log_prob(value.unsqueeze(-1))
         
         weight = self.weight
@@ -104,17 +146,26 @@ class DistributionKDE:
         return torch.logsumexp(log_prob + (1e-10 + weight).log(), dim=-1)
     
     def icdf(self, value):
+        """ Computes the inverse cumulative density evaluated at value
+        
+        Args:
+            value (tensor): an array of shape [batch_size], [1] or [num_cdfs, batch_size]
+        
+        Returns:
+            tensor: the evaluated inverse CDF. 
+        """
         return BisectionInverse(self.cdf, min_search=self.min_search, max_search=self.max_search)(value)
                 
     
 def quantile_to_distribution(predictions, bandwidth_ratio=2.5):
-    """
-    Inputs:
-        predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
-        bandwidth_ratio: float, the bandwidth of the kernel density estimator (relative to the average distance between quantiles). 
+    """ Convert a quantile prediction to a distribution prediction by kernel density estimation (KDE). 
+    
+    Args:
+        predictions (tensor): a batch of quantile predictions, should be an array of shape [batch_size, n_quantiles] or [batch_size, n_quantiles, 2]. 
+        bandwidth_ratio (float): the bandwidth of the kernel density estimator (relative to the average distance between quantiles). 
         
-    Outputs:
-        results: torch Distribution class, the converted predictions
+    Returns:
+        Distribution: a batch of distribution predictions 
     """
     if len(predictions.shape) == 2:
         quantiles = _implicit_quantiles(predictions.shape[1]).view(1, -1).to(predictions.device)
@@ -136,27 +187,54 @@ def quantile_to_distribution(predictions, bandwidth_ratio=2.5):
 
 
 def particle_to_distribution(predictions, bandwidth_ratio=2.5):
-    """
+    """ Convert a particle prediction to a distribution prediction by kernel density estimation (KDE)
+    
+    Args:
+        predictions (tensor): a batch of quantile predictions, should be an array of shape [batch_size, n_quantiles] or [batch_size, n_quantiles, 2]. 
+        bandwidth_ratio (float): the bandwidth of the kernel density estimator (relative to the average distance between quantiles). 
+        
+    Returns:
+        Distribution: a batch of distribution predictions
     """
     return quantile_to_distribution(particle_to_quantile(predictions))
 
 
 def particle_to_quantile(predictions):
-    """
-    Maintains the ordering of the quantiles (e.g. so the 10% quantile is always smaller than the 20% quantiles)
+    """ Converts a particle prediction to a quantile prediction. 
+    
     Not fully differentiable because of the sorting operation involved. Should be thought of as a permutation function 
     
-    Input: 
-        predictions: array [batch_size, n_particles], a batch of particle predictions
+    Args: 
+        predictions (tensor): array [batch_size, n_particles], a batch of particle predictions
+        
+    Returns: 
+        tensor: a batch of quantile predictions
     """
     return torch.sort(predictions, dim=1)[0]
 
 
-def ensemble_to_distribution(predictions):
-    """ Convert an ensemble prediction to a single distribution. This is based on the conversion scheme in https://papers.nips.cc/paper/2017/file/9ef2ed4b7fd2c810847ffa5fa85bce38-Paper.pdf
+def interval_to_point(predictions):
+    """ Converts an interval prediction to a point prediction by taking the middle of the interval.
     
-    Input:
-        predictions: an ensemble prediction 
+    Args: 
+        predictions (tensor): a batch of interval predictions.
+        
+    Returns:
+        tensor: a batch of point predictions 
+    """
+    return (predictions[:, 0] + predictions[:, 1]) / 2.
+
+    
+def ensemble_to_distribution(predictions):
+    """ Convert an ensemble prediction to a distribution prediction. 
+    
+    This is based on the conversion scheme described in https://papers.nips.cc/paper/2017/file/9ef2ed4b7fd2c810847ffa5fa85bce38-Paper.pdf
+    
+    Args:
+        predictions: an ensemble prediction.
+    
+    Returns:
+        Distribution: a batch of distribution predictions.
     """ 
     _check_valid(predictions, 'ensemble')
     means = []
