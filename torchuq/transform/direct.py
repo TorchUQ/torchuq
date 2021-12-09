@@ -190,7 +190,7 @@ def ensemble_to_distribution(predictions):
 
 
 
-def categorical_to_set(predictions, threshold=0.95):
+def categorical_to_uset(predictions, threshold=0.95):
     """ Convert a categorical prediction to a set prediction by taking the labels with highest probability until their total probability exceeds threshold
     
     This function is not differentiable. 

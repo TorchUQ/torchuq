@@ -12,15 +12,22 @@ import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
 from .basic import Calibrator
 from .utils import PerformanceRecord
+from .. import _get_prediction_device
 
 
 class TemperatureScaling(Calibrator):
     """ The class to recalibrate a categorical prediction with temperature scaling 
     
+    Temeprature scaling is often the algorithm of choice when calibrating predictions from deep neural networks. 
+    It learns the following map from the original predictions to the new prediction: $p \mapsto \mathrm{softmax}(\log p / T)$. 
+    The only learnable parameter --- the temperature parameter $T$ --- is tuned to maximize the log-likelihood of the labels. 
+    Temperature scaling requires very few samples to train because it only learns a single parameter $T$, yet despite the simplcity, 
+    empirical results show that temperature scaling achieves low calibration error when applied to deep network predictions. 
+    
     Args:
-        verbose (bool): if verbose=True print non-error messsages 
+        verbose (bool): if verbose=True print detailed messsages 
     """
-    def __init__(self, verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
+    def __init__(self, verbose=False): 
         super(TemperatureScaling, self).__init__(input_type='categorical')
         self.verbose = verbose
         self.temperature = None
@@ -34,7 +41,7 @@ class TemperatureScaling(Calibrator):
         """
         # Use gradient descent to find the optimal temperature
         # Can add bisection option in the future, since it should be considerably faster
-        self._change_device(predictions) 
+        self.to(predictions) 
         
         self.temperature = torch.ones(1, 1, requires_grad=True, device=self.device)
         optim = torch.optim.Adam([self.temperature], lr=1e-3)
@@ -70,7 +77,7 @@ class TemperatureScaling(Calibrator):
         """
         if self.temperature is None:
             print("Error: need to first train before calling this function")
-        self._change_device(predictions)
+        self.to(predictions)
         log_prediction = torch.log(predictions + 1e-10)
         return torch.softmax(log_prediction / self.temperature, dim=1)
     
@@ -80,14 +87,20 @@ class TemperatureScaling(Calibrator):
         Args:
             device (device): the torch device (such as torch.device('cpu'))
         """
+        device = _get_prediction_device(device)
         if self.temperature is not None:
             self.temperature.to(device)
+        self.device = device
         return self
 
     
     
 class DirichletCalibrator(Calibrator):
     """ The class to recalibrate a categorical prediction with dirichlet calibration 
+    
+    This implements the dirichlet calibration algorithm with ODIR regularization. 
+    Dirichlet calibration is a method proposed to achieve classwise calibration. 
+    For details see https://arxiv.org/abs/1910.12656.
     
     Args:
         verbose (bool): if verbose=True print non-error messsages 
@@ -111,7 +124,7 @@ class DirichletCalibrator(Calibrator):
         Returns:
             PerformanceRecord: a PerformanceRecord instance with detailed training log 
         """
-        self._change_device(predictions)
+        self.to(predictions)
         
         predictions = (predictions + 1e-10).log().detach()   # The input to the calibration map has to be log probabilities, we also don't want to propagate gradients w.r.t. original predictions 
         n_classes = predictions.shape[1]
@@ -181,7 +194,7 @@ class DirichletCalibrator(Calibrator):
         """
         if self.calibrator is None:
             print("Error: need to first train before calling this function")
-        self._change_device(predictions)
+        self.to(predictions)
         predictions = (predictions + 1e-10).log()   # The input to the calibration map has to be log probabilities 
         return torch.softmax(self.calibrator(predictions), dim=-1)
 
@@ -191,13 +204,19 @@ class DirichletCalibrator(Calibrator):
         Args:
             device (device): the torch device (such as torch.device('cpu'))
         """
+        device = _get_prediction_device(device)
         if self.calibrator is not None:
             self.calibrator.to(device)
+        self.device = device
             
             
 
 class HistogramBinning:
-    """ The class to recalibrate a categorical prediction with temperature scaling 
+    """ The class to recalibrate a categorical prediction with histogram binning. 
+    
+    The histogram binning algorithm partitions the samples into bins, 
+    computes the average confidence and the average accuracy in each bin, 
+    and increases / decreases the confidence of the samples to match the average accuracy. 
     
     Args:
         adaptive (bool): if adaptive is true, use the same number of samples per bin,
@@ -263,6 +282,7 @@ class HistogramBinning:
         """
         if self.bin_boundary is None:
             print("Error: need to first call ConfidenceHBCalibrator.train before calling this function")
+        self.to(predictions)
         with torch.no_grad():
             max_confidence, max_index = predictions.max(dim=1)
             max_confidence = max_confidence.view(-1, 1).repeat(1, len(self.bin_boundary))
@@ -285,7 +305,9 @@ class HistogramBinning:
         Args:
             device (device): the torch device (such as torch.device('cpu'))
         """
+        device = _get_prediction_device(device)
         if self.bin_boundary is not None:
             self.bin_boundary.to(device)
         if self.bin_adjustment is not None:
             self.bin_adjustment.to(device)
+        self.device = device

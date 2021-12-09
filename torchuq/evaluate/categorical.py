@@ -10,38 +10,66 @@ from .topk import plot_confusion_matrix as plot_confusion_matrix_topk
 
     
 def compute_ece_smooth(predictions, labels):
+    """ Compute the expected calibration error with smoothing
+
+    Args:
+        predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        labels (tensor): a batch of labels with shape [batch_size]
+        num_bins (int): number of bins to bin the confidences, set to None for the default choice
+        
+    Returns:
+        tensor: the computed ECE value, a tensor of shape []
+    """
+    
     max_confidence, prediction = predictions.max(dim=1)
     correct = (prediction == labels).type(torch.float32)
+    
+    # Sort by confidence
     confidence_ranking = torch.argsort(max_confidence)    
     sorted_confidence = max_confidence[confidence_ranking]
     sorted_correct = correct[confidence_ranking] 
-    smooth_filter = get_uniform_filter(1000, predictions.device)
-    return (smooth_filter(sorted_confidence) - smooth_filter(sorted_correct)).abs().mean()
+    
+    # Define a filter that smoothes a sequence
+    bandwidth = int(np.sqrt(len(predictions))) * 3 + 1
+    smooth_filter = _get_uniform_filter(bandwidth, device=torch.device('cpu'))
+    
+    # ECE is the difference between the smoothed confidence and the smoothed accuracy
+    ece = (smooth_filter(sorted_confidence) - smooth_filter(sorted_correct)).abs().mean()
+    return ece
 
 
-def compute_ece(predictions, labels):
+def compute_ece(predictions, labels, num_bins=None):
+    """ Compute the expected calibration error with binning 
+
+    Args:
+        predictions (tensor): a batch of categorical predictions with shape [batch_size, num_classes]
+        labels (tensor): a batch of labels with shape [batch_size]
+        num_bins (int): number of bins to bin the confidences, set to None for the default choice
+        
+    Returns:
+        tensor: the computed ECE value, a tensor of shape []
+    """
     confidence = predictions.max(dim=1)[0]
     correct = (predictions.argmax(dim=1) == labels.to(predictions.device)).type(torch.float32)
-
-    # Put the confidences and accuracies into bins
-    confidences = []
-    accuracy = []
 
     # Sort by confidence 
     ranking = torch.argsort(confidence)
     sorted_confidence = confidence[ranking]
     sorted_correct = correct[ranking]
 
-    # Divide all values into bins
-    bin_elem = int(np.ceil(len(predictions) / num_bins))
-    for i in range(num_bins):
-        confidence_bin = sorted_confidence[::bin_elem].mean()
-        accuracy_bin = sorted_correct[::bin_elem].mean()
-        confidence_bin - accuracy_bin
+    if num_bins is None:
+        # Heuristically I believe that 1/3 power is a great choice
+        # This is because the accuracy of estimating the mean improves sqrt w.r.t. the number of samples
+        # The binning error improves linearly w.r.t. the number of bins
+        num_bins = int(len(predictions) ** (1./3))  
         
-        accuracy.append(sorted_correct[i*bin_elem:(i+1)*bin_elem].mean().cpu().item())
+    # Compute the difference between confidence and accuracy
+    error = [confidence.mean() - accuracy.mean() for confidence, accuracy in 
+             zip(torch.split(sorted_confidence, num_bins), torch.split(sorted_correct, num_bins))]
+    error = torch.stack(error)
     
-       
+    ece = error.abs().mean()
+    return ece
 
 
 def compute_accuracy(predictions, labels):
@@ -60,6 +88,9 @@ def compute_classwise_ece(predictions, labels):
 
 
 def _plot_calibration_diagram_naf(predictions, labels, verbose=False):
+    """
+    Deprecated function for plotting the calibration diagram
+    """
     max_confidence, prediction = predictions.max(dim=1)
     correct = (prediction == labels).type(torch.float32)
     confidence_ranking = torch.argsort(max_confidence)    
