@@ -71,13 +71,13 @@ class CriticDecision(nn.Module):
         return torch.matmul(coeff, diff.sum(dim=0)).unsqueeze(0) 
     
     
-class CalibratorDecision(Calibrator):
+class DecisionCalibrator(Calibrator):
     def __init__(self, verbose=True, save_path=None):
         """
         Inputs: 
             verbose (boolean): if set to True than print performance during training
         """
-        super(CalibratorDecision, self).__init__()
+        super(DecisionCalibrator, self).__init__()
         self.critics = []
         self.verbose = verbose
         self.save_path = save_path
