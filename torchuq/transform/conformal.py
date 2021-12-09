@@ -333,12 +333,13 @@ class DistributionConformalNAF(DistributionConformal):
     
 
 def _conformal_score_point(predictions, values):
-    """
-    Compute the non-conformity score of a set of values under some baseline predictor 
-    Input:
+    """ Compute the non-conformity score of a set of values under some baseline predictor 
+    
+    Args:
         predictions: array [batch_shape], a batch of point predictions
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
-    Output:
+    
+    Returns:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
     score = values - predictions.view(1, -1)
@@ -346,71 +347,67 @@ def _conformal_score_point(predictions, values):
 
     
 def _conformal_iscore_point(predictions, score):
-    """
-    Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
+    """ Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
     The goal is that conformal_iscore_quantile(predictions, conformal_score_quantile(predictions, labels))) = labels
     
-    Input:
+    Args:
         predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
         score: array [n_evaluations, batch_shape]
         
-    Output:
+    Returns:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
     return predictions.view(1, -1) + score
 
 def _conformal_score_interval(predictions, values):
-    """
-    Compute the non-conformity score of a set of values under some baseline predictor 
-    Input:
+    """ Compute the non-conformity score of a set of values under some baseline predictor 
+    
+    Args:
         predictions: array [batch_shape, 2], a batch of interval predictions
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
         
-    Output:
+    Returns:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
     score = (values - predictions.min(dim=1, keepdims=True)[0].permute(1, 0)) / (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0) - 0.5
     return score 
     
 def _conformal_iscore_interval(predictions, score):
-    """
-    Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
+    """ Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
     The goal is that conformal_iscore_quantile(predictions, conformal_score_quantile(predictions, labels))) = labels
     
-    Input:
+    Args:
         predictions: array [batch_size, 2], a batch of interval predictions
         score: array [n_evaluations, batch_shape]
         
-    Output:
+    Returns:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
     return predictions.min(dim=1, keepdims=True)[0].permute(1, 0) + (score + 0.5) * (predictions[:, 1:2] - predictions[:, 0:1]).abs().permute(1, 0)
     
 
 def _conformal_score_interval1(predictions, values, max_interval=1e+3):
-    """
-    Compute the alternative non-conformity score of a set of values under interval predictions
+    """ Compute the alternative non-conformity score of a set of values under interval predictions
     """
     diff = values - predictions.mean(dim=1).view(1, -1) 
     return torch.sign(diff) * max_interval + diff
 
 
 def _conformal_iscore_interval1(predictions, values, max_interval=1e+3):
-    """
-    Compute the alternative inverse non-conformity score of a set of values under interval predictions
+    """ Compute the alternative inverse non-conformity score of a set of values under interval predictions
     """
     return values - torch.sign(values) * max_interval + predictions.mean(dim=1).view(1, -1)
 
 
 
 def _conformal_score_quantile(predictions, values):
-    """
-    Compute the non-conformity score of a set of values under some baseline predictor 
-    Input:
+    """ Compute the non-conformity score of a set of values under some baseline predictor 
+    
+    Args:
         predictions: array [batch_shape, n_quantiles] or [batch_shape, n_quantiles, 2], a batch of quantile predictions
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
         
-    Output:
+    Returns:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
     if len(predictions.shape) == 2:
@@ -437,15 +434,14 @@ def _conformal_score_quantile(predictions, values):
 
 
 def _conformal_iscore_quantile(predictions, score):
-    """
-    Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
+    """ Compute the inverse of the non-conformity score defined in conformal_score_quantile. 
     The goal is that conformal_iscore_quantile(predictions, conformal_score_quantile(predictions, labels))) = labels
     
-    Input:
+    Args:
         predictions: array [batch_size, n_quantiles] or [batch_size, n_quantiles, 2], a batch of quantile predictions
         score: array [n_evaluations, batch_shape]
         
-    Output:
+    Returns:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
     if len(predictions.shape) == 2:
@@ -472,13 +468,13 @@ def _conformal_iscore_quantile(predictions, score):
 
 
 def _conformal_score_distribution(predictions, values):
-    """
-    Compute the non-conformity score of a set of values under some baseline predictor 
-    Input:
+    """ Compute the non-conformity score of a set of values under some baseline predictor 
+    
+    Args:
         predictions: an instance that behaves like torch Distribution 
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
         
-    Output:
+    Returns:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
     score = predictions.cdf(values) - 0.5
@@ -486,15 +482,14 @@ def _conformal_score_distribution(predictions, values):
 
 
 def _conformal_iscore_distribution(predictions, score):
-    """
-    Compute the inverse of the non-conformity score defined in conformal_score_distribution.
+    """ Compute the inverse of the non-conformity score defined in conformal_score_distribution.
     The goal is that conformal_iscore_distribution(predictions, conformal_score_distribution(predictions, labels))) = labels
     
-    Input:
+    Args:
         predictions: an instance that behaves like torch Distribution
         score: array [n_evaluations, batch_shape]
         
-    Output:
+    Returns:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
     return predictions.icdf((score + 0.5).clamp(min=1e-6, max=1-1e-6))  # Clamp it for numerical stability 
@@ -502,8 +497,7 @@ def _conformal_iscore_distribution(predictions, score):
 
 
 def _conformal_score_distribution1(predictions, values):
-    """
-    An alternative choice of the non-conformity score for distribution predictions
+    """ An alternative choice of the non-conformity score for distribution predictions
     """
     mean, std = compute_mean_std(predictions, reduction='none')
     score = (values - mean.view(1, -1)) / (1e-4 + std.view(1, -1))
@@ -511,22 +505,21 @@ def _conformal_score_distribution1(predictions, values):
 
 
 def _conformal_iscore_distribution1(predictions, score):
-    """
-    An alternative choice of the non-conformity score for distribution predictions
+    """ An alternative choice of the non-conformity score for distribution predictions
     """
     mean, std = compute_mean_std(predictions, reduction='none')
     return score * (1e-4 + std.view(1, -1)) + mean.view(1, -1)
 
 
 def _conformal_score_particle(predictions, values):
-    """
-    Compute the non-conformity score of a set of values under some baseline predictor 
-    Input:
+    """ Compute the non-conformity score of a set of values under some baseline predictor 
+    
+    Args
         predictions: array [batch_size, n_particles], a batch of particle predictions
         values: array [n_evaluations, batch_shape], note that for values batch_shape is the last dimension while for predictions batch_shape is the first dimension
         one_side: boolean, set one_side=False for conformal calibration. Set one_side=True for conformal interval prediction 
         
-    Output:
+    Returns:
         score: array [n_evaluations, batch_shape], where score[i, j] is the non-conformity score of values[i, j] under the prediction[j]
     """
     # print(predictions.shape, values.shape)
@@ -545,15 +538,14 @@ def _conformal_score_particle(predictions, values):
     
     
 def _conformal_iscore_particle(predictions, score):
-    """
-    Compute the inverse of the non-conformity score defined in conformal_score_distribution.
+    """ Compute the inverse of the non-conformity score defined in conformal_score_distribution.
     The goal is that conformal_iscore_distribution(predictions, conformal_score_distribution(predictions, labels))) = labels
     
-    Input:
+    Args:
         predictions: array [batch_size, n_particles], a batch of particle predictions
         score: array [n_evaluations, batch_shape]
         
-    Output:
+    Returns:
         value: array [n_evaluations, batch_shape], where value[i, j] is the inverse non-conformity score of score[i, j] under prediction[j]
     """
     sorted_pred = torch.sort(predictions, dim=1)[0].permute(1, 0)
@@ -591,8 +583,7 @@ _concat_predictions = {
 
 # Need to define these functions after _conformal_score_functions are defined because this function is built upon other score functions
 def _conformal_score_ensemble(predictions, values):
-    """
-    Compute the non-conformity score of an ensemble prediction
+    """ Compute the non-conformity score of an ensemble prediction
     """
     # This function is special because it takes as input weights 
     scores = []
@@ -617,8 +608,7 @@ def _conformal_iscore_ensemble(predictions, score, min_search=-1e5, max_search=1
 
 
 def _concat_ensemble_prediction(predictions):
-    """
-    Concatenate a list of ensemble predictions. Each ensemble prediction in the list must have the same keys
+    """ Concatenate a list of ensemble predictions. Each ensemble prediction in the list must have the same keys
     """
     assert len(predictions) > 0, "Must have at least one predictions to concatenate"
     
@@ -638,12 +628,14 @@ _concat_predictions['ensemble'] = _concat_ensemble_prediction
 
 
 class ConformalBase(Calibrator):
+    """ The base class for both ConformalCalibrator and ConformalIntervalPredictor 
+    
+    Args:
+        input_type (str): the input prediction type, currently supports point, interval, particle, quantile, distribution or ensemble. 
+        score_func (int): for certain prediction types there are multiple conformal score options. In this case they will be numbered 0, 1, ...
+        verbose (bool): if verbose=True then print extra messages. 
+    """
     def __init__(self, input_type='interval', score_func=0, verbose=False):
-        """
-        Inputs:
-            input_type: str, one of the regression input types
-            score_func: int, the score function to use. The index corresponds to the paper (cite). 
-        """
         super(ConformalBase, self).__init__(input_type=input_type)
         self.verbose = verbose
         self.predictions = []
@@ -655,11 +647,11 @@ class ConformalBase(Calibrator):
         assert '%s_%d' % (input_type, score_func) in _conformal_score_functions, "score function %s_%d not available" % (input_type, score_func)
         
     def train(self, predictions, labels):
-        """
-        Train the conformal calibration from scratch 
-        Inputs:
-            predictions: a batch of predictions generated by the base predictor. Must have the correct type that matches the input_type argument
-            labels: a batch of labels, must be on the same device as predictions
+        """ Train the conformal calibration from scratch 
+        
+        Args:
+            predictions (object): a batch of original predictions. Must have the correct type that matches the input_type argument
+            labels (tensor): a batch of labels, must be on the same device as predictions
         """
         self.check_type(predictions)
         self.to(predictions) 
@@ -669,11 +661,11 @@ class ConformalBase(Calibrator):
         return self
     
     def update(self, predictions, labels):
-        """
-        Update the conformal calibrator online with new labels 
-        Inputs:
-            predictions: a batch of predictions generated by the base predictor. Must have the correct type that matches the input_type argument
-            labels: a batch of labels, must be on the same device as predictions
+        """ Update the conformal calibrator online with new labels 
+
+        Args:
+            predictions (object): a batch of original predictions. Must have the correct type that matches the input_type argument
+            labels (tensor): a batch of labels, must be on the same device as predictions
         """
         self.check_type(predictions)
         self.to(predictions)   # Optionally change the device to the device predictions resides in
@@ -683,9 +675,9 @@ class ConformalBase(Calibrator):
         return self 
     
     def to(self, device):
-        """ 
-        Move every torch tensor owned by this class to a new device 
-        Inputs:
+        """  Move every torch tensor owned by this class to a new device 
+        
+        Args:
             device: a torch.device instance, alternatively it could be a torch.Tensor or a prediction object
         """
         if not type(device).__name__ == 'device':
@@ -703,14 +695,18 @@ class ConformalBase(Calibrator):
     
     
 class ConformalCalibrator(ConformalBase):
+    """ Transforms any prediction type into calibrated probabilities. 
+    
+    Args:
+        input_type (str): the input prediction type, currently supports point, interval, particle, quantile, distribution or ensemble. 
+        interpolation (str): 'linear', 'random' or 'naf', the interpolation used when computing the CDF/ICDF functions. 
+            NAF is slow but produces smoother CDFs. 
+            Random has better calibration error (it should have perfect calibration) but has non-continuous CDF. 
+            Linear achieves good trade-off between speed, smoothness of CDF and calibration error. 
+        score_func (int): for certain prediction types there are multiple conformal score options. In this case they will be numbered 0, 1, ...
+        verbose (bool): if verbose=True then print extra messages. 
+    """
     def __init__(self, input_type='interval', interpolation='linear', score_func=0, verbose=False):
-        """
-        Inputs:
-            interpolation: 'linear', 'random' or 'naf', the interpolation used when computing the CDF/ICDF functions. 
-                NAF is slow but produces smoother CDFs. 
-                Random has better calibration error (it should have perfect calibration) but has non-continuous CDF. 
-                Linear achieves good trade-off between speed, smoothness of CDF and calibration error. 
-        """
         super(ConformalCalibrator, self).__init__(input_type=input_type, score_func=score_func, verbose=verbose) 
         if interpolation == 'linear':
             self.distribution_class = DistributionConformalLinear
@@ -721,12 +717,13 @@ class ConformalCalibrator(ConformalBase):
             self.distribution_class = DistributionConformalNAF 
             
     def __call__(self, predictions):
-        """ 
-        Output the calibrated probabilities given input base prediction. Because __call__ returns meaningful results, there must be at least two samples (observed by either train or update). 
-        Inputs:
-            predictions: a batch of predictions generated by the base predictor. Must have the correct type that matches the input_type argument
-        Outputs:
-            results: a class that behaves like torch Distribution. The calibrated probabilities. 
+        """ Output the calibrated probabilities given original prediction. For __call__ to return meaningful results, there must be at least two samples (observed by either train or update). 
+        
+        Args:
+            predictions: a batch of original predictions. Must have the correct type that matches the input_type argument
+            
+        Returns:
+            Distribution: a class that behaves like torch Distribution. The calibrated probabilities. 
         """
         self.check_type(predictions) 
         self.to(predictions)
@@ -741,13 +738,16 @@ class ConformalCalibrator(ConformalBase):
 
     
 class ConformalIntervalPredictor(ConformalBase):
+    """ Use conformal prediction to transform any prediction into intervals with correct coverage. 
+    
+    Args:
+        input_type (str): the input prediction type, currently supports point, interval, particle, quantile, distribution or ensemble. 
+        coverage (str): the coverage can be 'exact' or '1/n'. If the coverage is exact, then the algorithm can output [-inf, +inf] intervals
+        score_func (int): for certain prediction types there are multiple conformal score options. In this case they will be numbered 0, 1, ...
+        confidence (float): the desired coverage. For example, when confidence=0.95 the label should belong to the predicted interval 95% of the times. 
+        verbose (bool): if verbose=True then print extra messages.     
+    """
     def __init__(self, input_type='interval', coverage='exact', score_func=0, confidence=0.95, verbose=False):
-        """
-        Inputs:
-            input_type: str, one of the regression input types
-            score_func: int, the score function to use. The index corresponds to the paper (cite). 
-            coverage: the coverage can be 'exact' or '1/n'. If the coverage is exact, then the algorithm can output [-inf, +inf] intervals
-        """
         super(ConformalIntervalPredictor, self).__init__(input_type=input_type, score_func=score_func, verbose=verbose)
         self.val_scores = None
         
@@ -757,9 +757,11 @@ class ConformalIntervalPredictor(ConformalBase):
         
     
     def __call__(self, predictions, confidence=None):
-        """
-        Input: 
-            confidence: float, the confidence level of the prediction intervals. If None then uses the default confidence interval specified in the constructor 
+        """ Transform the original predictions into calibrated confidence intervals. 
+            
+        Args:
+            predictions (object): a batch of original predictions. Must have the correct type that matches the input_type argument.
+            confidence (float): the confidence level of the prediction intervals. If None then uses the default confidence interval specified in the constructor.
         """
         if confidence is None:
             confidence = self.confidence 
