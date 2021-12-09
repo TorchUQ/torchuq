@@ -8,11 +8,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
 from .utils import *
-
-# Very annoying python 3.3+ grammar for import something from parent module
 import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-from transform.decision import CriticDecision 
 
 
 # losses should be an array of shape [num_losses, num_actions, num_classes] where losses_{ijk} should be the loss i with action=j and true label=k
@@ -62,26 +58,26 @@ def compute_decision_loss_random(predictions, labels, num_loss=500, num_action=2
     return compute_decision_loss(predictions, labels, losses)
 
 
-def compute_decision_loss_worst(predictions, labels, num_action=2, num_critic_epoch=500, num_fold=2):
-    # Do random cross validated splits 
-    assert len(predictions) > num_fold * 2 
-    fold_size = len(predictions) // num_fold
+# def compute_decision_loss_worst(predictions, labels, num_action=2, num_critic_epoch=500, num_fold=2):
+#     # Do random cross validated splits 
+#     assert len(predictions) > num_fold * 2 
+#     fold_size = len(predictions) // num_fold
 
-    loss_total = 0.0
-    for fold in range(num_fold):
-        left, right = fold_size * fold, fold_size * (fold + 1) if fold != num_fold - 1 else len(predictions)
-    #     print(left, right) 
-        train_predictions = torch.cat([predictions[:left], predictions[right:]])
-        train_labels = torch.cat([labels[:left], labels[right:]])
-        test_predictions = predictions[left:right]
-        test_labels = labels[left:right]
+#     loss_total = 0.0
+#     for fold in range(num_fold):
+#         left, right = fold_size * fold, fold_size * (fold + 1) if fold != num_fold - 1 else len(predictions)
+#     #     print(left, right) 
+#         train_predictions = torch.cat([predictions[:left], predictions[right:]])
+#         train_labels = torch.cat([labels[:left], labels[right:]])
+#         test_predictions = predictions[left:right]
+#         test_labels = labels[left:right]
 
-        critic = CriticDecision(num_action=num_action, num_classes=predictions.shape[1]).to(predictions.device)
-        critic.optimize(predictions=predictions, labels=labels, num_epoch=num_critic_epoch)
-        with torch.no_grad():
-            loss_total += critic.evaluate_soft_diff(test_predictions, test_labels).mean(dim=0, keepdim=True).norm(2).sum()
-    loss_total /= num_fold 
-    return loss_total
+#         critic = CriticDecision(num_action=num_action, num_classes=predictions.shape[1]).to(predictions.device)
+#         critic.optimize(predictions=predictions, labels=labels, num_epoch=num_critic_epoch)
+#         with torch.no_grad():
+#             loss_total += critic.evaluate_soft_diff(test_predictions, test_labels).mean(dim=0, keepdim=True).norm(2).sum()
+#     loss_total /= num_fold 
+#     return loss_total
 
 
 
