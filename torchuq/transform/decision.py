@@ -80,6 +80,7 @@ class DecisionCalibrator(Calibrator):
     
     Args: 
         verbose (bool): if set to True than print additional performance information during training
+        save_path (float): the path to checkpoint any training weights. If set to None the weights are not saved. 
     """
     def __init__(self, verbose=True, save_path=None):
         super(DecisionCalibrator, self).__init__()
@@ -124,13 +125,13 @@ class DecisionCalibrator(Calibrator):
         If you call this function multiple times, this function does not erase previously trained calibration maps, and only appends additional recalibration steps
         
         Args:
-            predictions (tensor(batch_size, num_classes)): a categorical probability prediction 
-            labels (tensor(batch_size)): an array of int valued labels
+            predictions (tensor): a categorical prediction with shape [batch_size, n_classes]
+            labels (tensor): an array of int valued labels
             calib_steps (int): number of calibration iterations (this is the number of iteration steps in Algorithm 2 of the paper)
             num_critic_epoch (int): number of gradient descent steps when optimizing the worst case b in Algorithm 2 of the paper
-            test_predictions (tensor(batch_size, num_classes)): a categorical probability prediction, can be set to None if measuring test performance is not needed
-            test_labels (tensor(batch_size, num_classes)): an array of int valued labels, can be set to None if measuring test performance is not needed
-            seed: float, the random seed when measuring performance
+            test_predictions (tensor): a categorical prediction for measuring test performance, can be set to None if measuring test performance is not needed
+            test_labels (tensor): an array of int valued labels for measuring test performance, can be set to None if measuring test performance is not needed
+            seed: float, the random seed for reproducibility. 
             
         Returns:
             recorder: a PerformanceRecord object, the measured performance 
