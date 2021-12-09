@@ -17,10 +17,16 @@ from .utils import PerformanceRecord
 class TemperatureScaling(Calibrator):
     """ The class to recalibrate a categorical prediction with temperature scaling 
     
+    Temeprature scaling is often the algorithm of choice when calibrating predictions from deep neural networks. 
+    It learns the following map from the original predictions to the new prediction: $p \mapsto \mathrm{softmax}(\log p / T)$. 
+    The only learnable parameter --- the temperature parameter $T$ --- is tuned to maximize the log-likelihood of the labels. 
+    Temperature scaling requires very few samples to train because it only learns a single parameter $T$, yet despite the simplcity, 
+    empirical results show that temperature scaling achieves low calibration error when applied to deep network predictions. 
+    
     Args:
-        verbose (bool): if verbose=True print non-error messsages 
+        verbose (bool): if verbose=True print detailed messsages 
     """
-    def __init__(self, verbose=False):  # Algorithm can be hb (histogram binning) or kernel 
+    def __init__(self, verbose=False): 
         super(TemperatureScaling, self).__init__(input_type='categorical')
         self.verbose = verbose
         self.temperature = None
@@ -88,6 +94,10 @@ class TemperatureScaling(Calibrator):
     
 class DirichletCalibrator(Calibrator):
     """ The class to recalibrate a categorical prediction with dirichlet calibration 
+    
+    This implements the dirichlet calibration algorithm with ODIR regularization. 
+    Dirichlet calibration is a method proposed to achieve classwise calibration. 
+    For details see https://arxiv.org/abs/1910.12656.
     
     Args:
         verbose (bool): if verbose=True print non-error messsages 
@@ -197,7 +207,11 @@ class DirichletCalibrator(Calibrator):
             
 
 class HistogramBinning:
-    """ The class to recalibrate a categorical prediction with temperature scaling 
+    """ The class to recalibrate a categorical prediction with histogram binning. 
+    
+    The histogram binning algorithm partitions the samples into bins, 
+    computes the average confidence and the average accuracy in each bin, 
+    and increases / decreases the confidence of the samples to match the average accuracy. 
     
     Args:
         adaptive (bool): if adaptive is true, use the same number of samples per bin,
