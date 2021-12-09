@@ -140,14 +140,19 @@ class DistributionConformal:
             
 
 class DistributionConformalLinear(DistributionConformal):
+    """ Use linear interpolation for conformal calibration. 
+    """
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func, verbose=False):
         super(DistributionConformalLinear, self).__init__(val_predictions, val_labels, test_predictions, score_func, iscore_func)
         
     def cdf(self, value):
-        """
-        The CDF at value
-        Input:
-        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_size] 
+        """ The CDF at value. This function is differentiable
+        
+        Args:
+            value (tensor): an array of shape [n_evaluations, batch_shape] or shape [batch_size].
+    
+        Returns:
+            tensor: the value of CDF at the queried values.
         """
         # First perform automatic shape induction and convert value into an array of shape [n_evaluations, batch_shape]
         value, out_shape = self.shape_inference(value)
@@ -167,14 +172,14 @@ class DistributionConformalLinear(DistributionConformal):
         return cdf.view(out_shape).to(out_device) 
     
     def icdf(self, value):
-        """
-        Get the inverse CDF
-        Input:
-        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_shape], each entry should take values in [0, 1]
-        Supports automatic shape induction, e.g. if cdf has shape [n_evaluations, 1] it will automatically be converted to shape [n_evaluations, batch_shape]
+        """ Get the inverse CDF. This function is differentiable.
         
-        Output:
-        The value of inverse CDF function at the queried cdf values
+        Args:
+            value (tensor): an array of shape [n_evaluations, batch_shape] or shape [batch_shape], each entry should take values in [0, 1]
+                Supports automatic shape induction, e.g. if cdf has shape [n_evaluations, 1] it will automatically be converted to shape [n_evaluations, batch_shape]
+        
+        Returns:
+            tensor: the value of inverse CDF function at the queried cdf values
         """
         cdf, out_shape = self.shape_inference(value)   # Convert cdf to have shape [n_evaluations, batch_shape]
         # self.to(cdf.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
@@ -195,8 +200,8 @@ class DistributionConformalLinear(DistributionConformal):
         
         
 class DistributionConformalRandom(DistributionConformal):
-    """
-    Use randomization to interpolate the non-conformity score. 
+    """ Use randomization for conformal calibration. 
+    
     This distribution does not have a differentiable CDF (i.e. it does not have a density), so the behavior of functions such as log_prob and plot_density are undefined. 
     """
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func, verbose=False):
@@ -208,10 +213,13 @@ class DistributionConformalRandom(DistributionConformal):
         self.val_scores[-1] = float('inf')
         
     def cdf(self, value):
-        """
-        The CDF at value. This function is NOT differentiable
-        Input:
-        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_size] 
+        """ The CDF at value. This function is NOT differentiable
+        
+        Args:
+            value (tensor): an array of shape [n_evaluations, batch_shape] or shape [batch_size].
+    
+        Returns:
+            tensor: the value of CDF at the queried values.
         """
         # First perform automatic shape induction and convert value into an array of shape [n_evaluations, batch_shape]
         value, out_shape = self.shape_inference(value)
@@ -238,14 +246,14 @@ class DistributionConformalRandom(DistributionConformal):
     
     
     def icdf(self, value):
-        """
-        Get the inverse CDF. This function is NOT differentiable
-        Input:
-        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_shape], each entry should take values in [0, 1]
-        Supports automatic shape induction, e.g. if cdf has shape [n_evaluations, 1] it will automatically be converted to shape [n_evaluations, batch_shape]
+        """ Get the inverse CDF. This function is NOT differentiable
         
-        Output:
-        The value of inverse CDF function at the queried cdf values
+        Args:
+            value (tensor): an array of shape [n_evaluations, batch_shape] or shape [batch_shape], each entry should take values in [0, 1]
+                Supports automatic shape induction, e.g. if cdf has shape [n_evaluations, 1] it will automatically be converted to shape [n_evaluations, batch_shape]
+        
+        Returns:
+            tensor: the value of inverse CDF function at the queried cdf values
         """
         cdf, out_shape = self.shape_inference(value)   # Convert cdf to have shape [n_evaluations, batch_shape]
         # self.to(cdf.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
@@ -263,6 +271,8 @@ class DistributionConformalRandom(DistributionConformal):
     
     
 class DistributionConformalNAF(DistributionConformal):
+    """ Using NAF interpolation for conformal calibration. This function behaves like torch Distribution. 
+    """
     def __init__(self, val_predictions, val_labels, test_predictions, score_func, iscore_func, verbose=True):
         super(DistributionConformalNAF, self).__init__(val_predictions, val_labels, test_predictions, score_func, iscore_func)
         
@@ -293,10 +303,13 @@ class DistributionConformalNAF(DistributionConformal):
                 print("Iteration %d, loss=%.5f, lr=%.5f" % (iteration, loss, flow_optim.param_groups[0]['lr']))
     
     def cdf(self, value):
-        """
-        The CDF at value
-        Input:
-        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_size] 
+        """ The CDF at value. This function is differentiable
+        
+        Args:
+            value (tensor): an array of shape [n_evaluations, batch_shape] or shape [batch_size].
+    
+        Returns:
+            tensor: the value of CDF at the queried values.
         """
         # First perform automatic shape induction and convert value into an array of shape [n_evaluations, batch_shape]
         value, out_shape = self.shape_inference(value)
@@ -311,14 +324,14 @@ class DistributionConformalNAF(DistributionConformal):
         return cdf.clamp(min=1e-6, max=1-1e-6).view(out_shape).to(out_device)
     
     def icdf(self, value):
-        """
-        Get the inverse CDF
-        Input:
-        - value: an array of shape [n_evaluations, batch_shape] or shape [batch_shape], each entry should take values in [0, 1]
-        Supports automatic shape induction, e.g. if cdf has shape [n_evaluations, 1] it will automatically be converted to shape [n_evaluations, batch_shape]
+        """ Get the inverse CDF. This function is differentiable. 
         
-        Output:
-        The value of inverse CDF function at the queried cdf values
+        Args:
+            value (tensor): an array of shape [n_evaluations, batch_shape] or shape [batch_shape], each entry should take values in [0, 1]
+                Supports automatic shape induction, e.g. if cdf has shape [n_evaluations, 1] it will automatically be converted to shape [n_evaluations, batch_shape]
+        
+        Returns:
+            tensor: the value of inverse CDF function at the queried cdf values
         """
         cdf, out_shape = self.shape_inference(value)   # Convert cdf to have shape [n_evaluations, batch_shape]
         # self.to(cdf.device)   # Move all assets in this class to the same device as value to avoid device mismatch error
