@@ -12,6 +12,7 @@ import os, sys, shutil, copy, time, random
 from torchuq.models.flow import NafFlow
 from .basic import Calibrator
 from .utils import PerformanceRecord
+from .. import _get_prediction_device
 
 
 class TemperatureScaling(Calibrator):
@@ -40,7 +41,7 @@ class TemperatureScaling(Calibrator):
         """
         # Use gradient descent to find the optimal temperature
         # Can add bisection option in the future, since it should be considerably faster
-        self._change_device(predictions) 
+        self.to(predictions) 
         
         self.temperature = torch.ones(1, 1, requires_grad=True, device=self.device)
         optim = torch.optim.Adam([self.temperature], lr=1e-3)
@@ -76,7 +77,7 @@ class TemperatureScaling(Calibrator):
         """
         if self.temperature is None:
             print("Error: need to first train before calling this function")
-        self._change_device(predictions)
+        self.to(predictions)
         log_prediction = torch.log(predictions + 1e-10)
         return torch.softmax(log_prediction / self.temperature, dim=1)
     
@@ -86,8 +87,10 @@ class TemperatureScaling(Calibrator):
         Args:
             device (device): the torch device (such as torch.device('cpu'))
         """
+        device = _get_prediction_device(device)
         if self.temperature is not None:
             self.temperature.to(device)
+        self.device = device
         return self
 
     
@@ -121,7 +124,7 @@ class DirichletCalibrator(Calibrator):
         Returns:
             PerformanceRecord: a PerformanceRecord instance with detailed training log 
         """
-        self._change_device(predictions)
+        self.to(predictions)
         
         predictions = (predictions + 1e-10).log().detach()   # The input to the calibration map has to be log probabilities, we also don't want to propagate gradients w.r.t. original predictions 
         n_classes = predictions.shape[1]
@@ -191,7 +194,7 @@ class DirichletCalibrator(Calibrator):
         """
         if self.calibrator is None:
             print("Error: need to first train before calling this function")
-        self._change_device(predictions)
+        self.to(predictions)
         predictions = (predictions + 1e-10).log()   # The input to the calibration map has to be log probabilities 
         return torch.softmax(self.calibrator(predictions), dim=-1)
 
@@ -201,8 +204,10 @@ class DirichletCalibrator(Calibrator):
         Args:
             device (device): the torch device (such as torch.device('cpu'))
         """
+        device = _get_prediction_device(device)
         if self.calibrator is not None:
             self.calibrator.to(device)
+        self.device = device
             
             
 
@@ -277,6 +282,7 @@ class HistogramBinning:
         """
         if self.bin_boundary is None:
             print("Error: need to first call ConfidenceHBCalibrator.train before calling this function")
+        self.to(predictions)
         with torch.no_grad():
             max_confidence, max_index = predictions.max(dim=1)
             max_confidence = max_confidence.view(-1, 1).repeat(1, len(self.bin_boundary))
@@ -299,7 +305,9 @@ class HistogramBinning:
         Args:
             device (device): the torch device (such as torch.device('cpu'))
         """
+        device = _get_prediction_device(device)
         if self.bin_boundary is not None:
             self.bin_boundary.to(device)
         if self.bin_adjustment is not None:
             self.bin_adjustment.to(device)
+        self.device = device
