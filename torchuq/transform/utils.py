@@ -3,10 +3,18 @@ import torch
 
 
 class PerformanceRecord:
+    """ Class that records the performance of a training algorithm """
     def __init__(self):
         self.records = {}
 
     def add_scalar(self, name, value, iteration=0):
+        """ Add a scalar to the records. 
+        
+        Args:
+            name (str): name of the record. 
+            value (float): value of the record.
+            iteration (int): the iteration index. 
+        """
         if name not in self.records:
             self.records[name] = {}
         if iteration not in self.records[name]:
@@ -16,6 +24,15 @@ class PerformanceRecord:
             self.records[name][iteration][1] += value
         
     def get_scalar(self, name):
+        """ Retrieve a scalar from the records.
+        
+        Args:
+            name (str): name of the record. 
+            
+        Returns:
+            list: a list of iteration counts. 
+            list: a list of values. 
+        """
         if not name in self.records:
             print("%s not found. Available records include " + " ".join([self.records.keys()]))
             return None
@@ -27,28 +44,34 @@ class PerformanceRecord:
     
 class BisectionInverse:
     """ Given a monotonic function forward_func, computes its inverse with bisection. 
-    This function is differentiable if the forward_func is differentiable and has invertiable gradients
-    The forward_func should be defined on [min_search, max_search] 
+    
+    This function is differentiable if the forward_func is differentiable and has invertiable gradients.
+    
+    Args:
+        forward_func (function): the function to be inverted. 
+            It should be a monotonic function that take as input a tensor [...] and outputs a tensor [...] with the same size as the input. 
+        min_search (float): the minimum value to search for the inverse. 
+        max_search (float): the maximum value to search for the inverse. 
     """
     def __init__(self, forward_func, min_search=-1e5, max_search=1e5):
-        """
-        Inputs: 
-        forward_func: a function that take as input a tensor [...] and outputs a tensor [...] with the same size as the input. 
-            It must be a monotonic function. If requires_grad is true for the input, then forward_func should also be differentiable and have non-zero gradients (otherwise its inverse if not differentiable)
-        min_search: (float) the minimum value that bisection algorithm will search
-        max_search: (float) the maximum value that the bisection algorithm will search 
-        """
         self.forward_func = forward_func
         self.min_search = min_search
         self.max_search = max_search
         self.warning = False
         
     def __call__(self, val):
+        """ Compute the inverse of the forward_func. This function is differentiable if the forward_func has non-zero gradients.
+        
+        Args:
+            val (tensor): the values to invert. 
+        """
         return self.forward(val)
     
     def forward(self, val):
-        """
-        Compute the inverse of the forward_func. This function is differentiable if the forward_func has non-zero gradients 
+        """ Compute the inverse of the forward_func. This function is differentiable if the forward_func has non-zero gradients.
+        
+        Args:
+            val (tensor): the values to invert. 
         """
         with torch.no_grad():
             dummy = self.forward_func(val)   # Only a trick to get the right shape of the output tensor 

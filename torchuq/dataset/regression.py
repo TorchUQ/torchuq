@@ -18,20 +18,20 @@ dataset_names = dataset_names_uci + ["kin8nm", "medical-expenditure"]
 
 
 def get_regression_datasets(name, val_fraction=0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
-    r"""
-    Returns a UCI regression dataset in the form of numpy arrays.
+    r""" Returns a UCI regression dataset in the form of a torch Dataset
     
     Arguments:
-        name (str): name of the dataset
-        val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None
-        test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None
-        split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled
-        normalize (boolean): normalize the dataset to have zero mean and unit variance 
+        name (str): name of the dataset.
+        val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None.
+        test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None.
+        split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled.
+        normalize (bool): if True then normalize the dataset to have zero mean and unit variance.
+        verbose (bool): if True then print additional messages. 
         
     Returns:
-        train_dataset (torch.utils.data.Dataset): training dataset
-        val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0
-        test_dataset (torch.utils.data.Dataset): test dataset, None if test_fraction=0.0 
+        train_dataset (torch.utils.data.Dataset): training dataset.
+        val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0.
+        test_dataset (torch.utils.data.Dataset): test dataset, None if test_fraction=0.0. 
     """
     # load full dataset
 

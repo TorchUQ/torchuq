@@ -19,8 +19,8 @@ lesion_type_dict = {
 }
     
 
-# Define a pytorch dataloader for this dataset
 class HAM10000(Dataset):
+    """ The class for the HAM10000 dataset that inherits the torch Dataset interface"""
     def __init__(self, df, transform=None):
         self.df = df
         self.transform = transform
@@ -38,12 +38,29 @@ class HAM10000(Dataset):
         return X, y
     
 
-def get_ham10000(data_dir='.', split_seed=0, test_fraction=0.2, val_fraction=0.2, maybe_download=True, balance_train=True, verbose=True, input_size=224):
-    if not os.path.isdir(os.path.join(data_dir, 'HAM10000_images_part_1')) or not os.path.isdir(os.path.join(data_dir, 'HAM10000_images_part_1')):
-        if maybe_download:
-            assert False, "Automatic download not implemented yet"
-        else:
-            assert False, "Cannot find the HAM dataset, try setting the maybe_download argument=True to download the dataset automatically"
+def get_ham10000(data_dir='.', test_fraction=0.2, val_fraction=0.2, split_seed=0, balance_train=True, verbose=True, input_size=224):
+    """ Retrieve the HAM10000 dataset. 
+    
+    To use this function, download the dataset folders HAM10000_images_part_1 and HAM10000_images_part_2 and the meta-data file https://www.kaggle.com/kmader/skin-cancer-mnist-ham10000
+    from https://www.kaggle.com/kmader/skin-cancer-mnist-ham10000. 
+    Put them into the same folder, and point data_dir to this folder.
+    
+    Args:
+        data_dir (str): the data folder. 
+        val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None.
+        test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None.
+        split_seed (int): seed used to generate train/test split. 
+        balance_train (bool): if True then over-sample under-represented classes in the training set, so that all classes have approximately the same number of samples. 
+        verbose (bool): if True then print additional messages. 
+        input_size (int): the size of the image. 
+        
+    Returns:
+        train_dataset (torch.utils.data.Dataset): training dataset
+        val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0
+        test_dataset (torch.utils.data.Dataset): test dataset, None if test_fraction=0.0 
+    """
+    if not os.path.isdir(os.path.join(data_dir, 'HAM10000_images_part_1')) or not os.path.isdir(os.path.join(data_dir, 'HAM10000_images_part_2')):
+            assert False, "Cannot find the HAM dataset, download the data files"
         
     all_image_path = glob(os.path.join(data_dir, '*', '*.jpg'))
     imageid_path_dict = {os.path.splitext(os.path.basename(x))[0]: x for x in all_image_path}   # Get the list of all images and their full path
@@ -123,12 +140,12 @@ def get_ham10000(data_dir='.', split_seed=0, test_fraction=0.2, val_fraction=0.2
 
 
     # define the transformation of the train images.
-    ham_train_transform = transforms.Compose([transforms.Resize((input_size,input_size)), transforms.RandomHorizontalFlip(), 
+    train_transform = transforms.Compose([transforms.Resize((input_size,input_size)), transforms.RandomHorizontalFlip(), 
                                               transforms.RandomVerticalFlip(), transforms.RandomRotation(10), 
                                               transforms.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1), 
                                               transforms.ToTensor(), transforms.Normalize(norm_mean, norm_std)])
     # define the transformation of the val images / test images.
-    ham_val_transform = transforms.Compose([transforms.Resize((input_size,input_size)), transforms.ToTensor(), 
+    val_transform = transforms.Compose([transforms.Resize((input_size,input_size)), transforms.ToTensor(), 
                                             transforms.Normalize(norm_mean, norm_std)])
 
     train_dataset = HAM10000(df_train.reset_index(), transform=train_transform) # Need to reset index so we can index the entries from [0, len(df_train))

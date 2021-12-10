@@ -18,21 +18,19 @@ dataset_nclasses = {
 
 
 def get_classification_datasets(name, val_fraction=0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
-    r"""
-    Returns a UCI regression dataset in the form of numpy arrays.
+    """ Returns a UCI regression dataset in the form of a torch Dataset. 
     
-    Arguments:
+    Args:
         name (str): name of the dataset
         val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None
         test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None
         split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled
-        normalize (boolean): normalize the dataset to have zero mean and unit variance 
+        normalize (bool): normalize the dataset to have zero mean and unit variance 
         
     Returns:
         train_dataset (torch.utils.data.Dataset): training dataset
         val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0
         test_dataset (torch.utils.data.Dataset): test dataset, None if test_fraction=0.0 
-        n_classes (int): the number of classes in the classification task, the labels will be integers {0, 1, ..., n_classes-1} 
     """
     # load full dataset
 
