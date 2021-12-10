@@ -53,6 +53,11 @@ def get_ham10000(data_dir='.', test_fraction=0.2, val_fraction=0.2, split_seed=0
         balance_train (bool): if True then over-sample under-represented classes in the training set, so that all classes have approximately the same number of samples. 
         verbose (bool): if True then print additional messages. 
         input_size (int): the size of the image. 
+        
+    Returns:
+        train_dataset (torch.utils.data.Dataset): training dataset
+        val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0
+        test_dataset (torch.utils.data.Dataset): test dataset, None if test_fraction=0.0 
     """
     if not os.path.isdir(os.path.join(data_dir, 'HAM10000_images_part_1')) or not os.path.isdir(os.path.join(data_dir, 'HAM10000_images_part_2')):
             assert False, "Cannot find the HAM dataset, download the data files"
