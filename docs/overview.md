@@ -1,11 +1,12 @@
+# Overview
 
-# Basic Design Philosophy and Usage
+This page contains an overview of the design philosophy and usage of TorchUQ.
 
-The core of torchuq consists of the following three components: prediction types, evaluation and transformation.
+The core of TorchUQ consists of the following three components: prediction types, evaluation metrics, and transformations.
 
 ## 1. Prediction types 
 
-Before we start to work with any predictions we must think about how to represent our prediction. For example, when predicting the price of a house, we could represent it as a range, such as 120k-150k dollars, or we could represent it as a cumulative density function (CDF). Torchuq supports around 10 different prediction types for regression and classification problems: 
+Before we start to work with any predictions we must think about how to represent our prediction. For example, when predicting the price of a house, we could represent it as a range, such as 120k-150k dollars, or we could represent it as a cumulative density function (CDF). TorchUQ supports around 10 different prediction types for regression and classification problems:
 
 - For a list of types supported for regression problems, see [link] 
 
@@ -15,7 +16,7 @@ In the next major update, we intend to support additional prediction types, such
 
 ## 2. Evaluation Metrics 
 
-Given a prediction, we will want to evaluate how good it is at capturing the ground truth. In Torchuq all evaluation functions are in the ```torchuq.evaluate```  sub-module, organized by prediction type. For example, functions that evaluate a categorical prediction are in the ```torchuq.evaluate.categorical``` sub-module, and functions that evaluate a distribution prediction are in the ```torchuq.evaluate.distribution``` sub-module. 
+Given a prediction, we will want to evaluate how good it is at capturing the ground truth. In TorchUQ all evaluation functions are in the ```torchuq.evaluate```  sub-package, organized by prediction type. For example, functions that evaluate a categorical prediction are in the ```torchuq.evaluate.categorical``` sub-package, and functions that evaluate a distribution prediction are in the ```torchuq.evaluate.distribution``` sub-package.
 
 There are two ways to evaluate predictions: by computing a metric (such as the L2 loss or the log-likelihood), or by a visualization plot (such as the reliability diagram). 
 
@@ -51,27 +52,28 @@ Most visualization functions take three arguments (but some may take more or les
 - ```ax```: the matplotlib axes to make the figure on. If ```ax is None``` (recommended), then a new figure (of suitable size) will be created. If ```ax is not None``` then you should make sure the figure has the right size for visual appeal of the plot. 
 
 
-## 3. Transform
+## 3. Transformations
 
-The final and key component of torchuq is transformation. We will want to transform low quality predictions (such as uncalibrated predictions) into new high quality predictions, usually with the help of some data. 
+The final and key component of TorchUQ is transformation. We will want to transform low quality predictions (such as uncalibrated predictions) into new high quality predictions, usually with the help of some data. 
 
 The main workhorse for transformation is the Calibrator abstract class, which defines a unified interface for an extremely large collection of calibration algorithms (including standard calibration algorithms, conformal prediction, decision calibration, multi-calibration, and many more).
 
-![Calibration Illustration](../illustrations/calibrator.png)
+![Calibration Illustration](illustrations/calibrator.png)
 
 A calibrator class has three main functions: 
 
 1. ```Calibrator.__init__```(input_type='auto')
 
-The initialization function can take optional arguments, but has only one required argument, which is the input type --- it can be any of the prediction types in the previous section. 
+The initialization function can take optional arguments, but has only one required argument, which is the input type---it can be any of the prediction types in the previous section. 
 
 2. ``` Calibrator.train(predictions, labels, side_feature=None) ```
 
-The ```Calibrator.train``` function uses the training data to learn any parameters that is necessary to transform a low quality prediction into a high quality prediction. It takes as input a set of predictions and the corresponding labels. In addition, a few recalibration algorithms --- such as group calibration or multicalibration --- can take as input additional side features, and the transformation depends on the side feature. 
+The ```Calibrator.train``` function uses the training data to learn any parameters that is necessary to transform a low quality prediction into a high quality prediction. It takes as input a set of predictions and the corresponding labels. In addition, a few recalibration algorithms---such as group calibration or multicalibration---can take as input additional side features, and the transformation depends on the side feature. 
 
 3. ```Calibrator.__call__(predictions, side_feature=None)```
 
 To use the learned calibrator to transform new data, simply run ```Calibrator(new_prediction)```. Note that several calibrator can transform a prediction into a different type. For example, the ```ConformalCalibrator``` class takes as input an original prediction of any type, and outputs new predictions that are distributions.  
+
 
 ### Example
 
@@ -90,5 +92,32 @@ Finally many algorithms can be used in the online prediction setup, where data b
 
 ```Calibrator.update(predictions, labels, side_feature=None) ```
 
-This function works in the same way as ```calibrator.train```--- except that instead of training the calibrator from scratch, it updates the calibrator with the new data. For an online prediction example see [link]. 
+This function works in the same way as ```calibrator.train```---except that instead of training the calibrator from scratch, it updates the calibrator with the new data. For an online prediction example see [link]. 
 
+### Transformations Options
+
+While the above discussion concerns transformations with data, TorchUQ also supports
+direct transformations between types. For example, given a distribution prediction, we
+can take the 95% credible interval as an interval prediction. The follow tables show the
+options for direct transformations.
+
+#### Transformations for regression prediction types
+
+|              | Point  | Distribution | Interval | Quantile | Particle |
+| :----------: | :----: | :----------: | :------: | :------: | :------: |
+|    Point     |   -    |      No      |    No    |    No    |    No    |
+| Distribution |  Yes   |      -       |   Yes    |   Yes    |   Yes    |
+|   Interval   |  Yes   |      No      |    -     |    No    |    No    |
+|   Quantile   | ->Dist |     Yes      |  ->Dist  |    -     |  ->Dist  |
+|   Particle   | ->Dist |     Yes      |  ->Dist  |   Yes    |  ->Dist  |
+|   Ensemble   | ->Dist |     Yes      |  ->Dist  |  ->Dist  |  ->Dist  |
+
+
+#### Transformations for classification prediction types
+
+|             | topk | categorical | uset |
+| :---------: | :--: | :---------: | :--: |
+|    topk     |  -   |             |      |
+| categorical | Yes  |      -      | Yes  |
+|    uset     |      |             |  -   |
+|  ensemble   |      |             |      |

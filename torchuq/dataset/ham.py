@@ -20,7 +20,7 @@ lesion_type_dict = {
     
 
 class HAM10000(Dataset):
-    """ The class for the HAM10000 dataset that inherits the torch Dataset interface"""
+    """The class for the HAM10000 dataset that inherits the torch Dataset interface."""
     def __init__(self, df, transform=None):
         self.df = df
         self.transform = transform
@@ -39,12 +39,12 @@ class HAM10000(Dataset):
     
 
 def get_ham10000(data_dir='.', test_fraction=0.2, val_fraction=0.2, split_seed=0, balance_train=True, verbose=True, input_size=224):
-    """ Retrieve the HAM10000 dataset. 
-    
+    """Retrieve the HAM10000 dataset.
+
     To use this function, download the dataset folders HAM10000_images_part_1 and HAM10000_images_part_2 and the meta-data file https://www.kaggle.com/kmader/skin-cancer-mnist-ham10000
     from https://www.kaggle.com/kmader/skin-cancer-mnist-ham10000. 
     Put them into the same folder, and point data_dir to this folder.
-    
+
     Args:
         data_dir (str): the data folder. 
         val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None.
@@ -53,7 +53,7 @@ def get_ham10000(data_dir='.', test_fraction=0.2, val_fraction=0.2, split_seed=0
         balance_train (bool): if True then over-sample under-represented classes in the training set, so that all classes have approximately the same number of samples. 
         verbose (bool): if True then print additional messages. 
         input_size (int): the size of the image. 
-        
+
     Returns:
         train_dataset (torch.utils.data.Dataset): training dataset
         val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0

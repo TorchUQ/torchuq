@@ -31,7 +31,11 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.imgmath',
     'sphinx_autodoc_typehints',
+    'myst_parser',
 ]
+
+# For .md files (along with myst_parser)
+source_suffix = ['.rst', '.md']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

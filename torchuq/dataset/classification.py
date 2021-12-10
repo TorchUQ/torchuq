@@ -18,15 +18,15 @@ dataset_nclasses = {
 
 
 def get_classification_datasets(name, val_fraction=0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
-    """ Returns a UCI regression dataset in the form of a torch Dataset. 
-    
+    """Returns a UCI regression dataset in the form of a torch Dataset.
+
     Args:
         name (str): name of the dataset
         val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None
         test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None
         split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled
         normalize (bool): normalize the dataset to have zero mean and unit variance 
-        
+
     Returns:
         train_dataset (torch.utils.data.Dataset): training dataset
         val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0
@@ -58,7 +58,7 @@ def get_classification_datasets(name, val_fraction=0.2, test_fraction=0.2, split
     assert X.shape[0] - size_val - size_test >= 2, "Train data size has to be at least 2, maybe check that test_fraction=%f and val_fraction=%f sum to less than 1?" % (test_fraction, val_fraction)
     if verbose:
         print("Splitting into train/val/test with %d/%d/%d samples" % (X.shape[0] - size_val - size_test, size_val, size_test))
-        
+
     # Normalize the data to have unit std and zero mean
     def standardize(data):
         mu = data.mean(axis=0, keepdims=1)
@@ -67,7 +67,7 @@ def get_classification_datasets(name, val_fraction=0.2, test_fraction=0.2, split
 
         data = (data - mu) / scale
         return data, mu, scale
-    
+
     # Extract the training set
     index_train = permutation[size_val+size_test:]
     X_train = X[index_train, :]
@@ -80,7 +80,7 @@ def get_classification_datasets(name, val_fraction=0.2, test_fraction=0.2, split
         torch.Tensor(X_train).type(torch.float32),
         torch.Tensor(y_train).type(torch.int),
     )
-    
+
     # Extract the val set is applicable
     if size_val > 0:
         index_val = permutation[:size_val]
@@ -92,7 +92,7 @@ def get_classification_datasets(name, val_fraction=0.2, test_fraction=0.2, split
         )
     else:
         val_dataset = None
-    
+
     # Extract the test set if applicable
     if size_test > 0:
         index_test = permutation[size_val:size_val+size_test]

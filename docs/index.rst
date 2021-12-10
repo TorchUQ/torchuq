@@ -11,4 +11,5 @@ User Guide
 
   installation
   quick_start
+  overview
   api_reference/index
