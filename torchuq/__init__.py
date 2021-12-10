@@ -10,6 +10,14 @@ data_types = ['point', 'interval', 'particle', 'distribution', 'quantile']
 # Some utility functions shared across the entire library
 
 def _implicit_quantiles(n_quantiles):
+    """ Get the implicit quantiles (when it is not explicitly specified) 
+    
+    Args:
+        n_quantiles (int): the number of quantiles
+        
+    Returns:
+        tensor: an array of the quantiles. 
+    """
     # Induce the implicit quantiles, these quantiles should be equally spaced 
     quantiles = torch.linspace(0, 1, n_quantiles+1)
     quantiles = (quantiles[1:] - quantiles[1] * 0.5) 
@@ -17,15 +25,14 @@ def _implicit_quantiles(n_quantiles):
 
 
 def _move_prediction_device(predictions, device):  
-    """
-    Move the prediction to specified device. Warning: This function may modify predictions in place
+    """ Move a prediction to specified device. This function may modify predictions in place
     
-    Inputs:
-        predictions: original prediction
-        device: any torch device
+    Args:
+        predictions: the original prediction.
+        device (torch Device): the device to move the prediction to.  
         
-    Outputs:
-        new_predictions: the prediction in the new device
+    Returns:
+        prediction: the prediction in the new device
     """
     if issubclass(type(predictions), torch.distributions.distribution.Distribution):  # Trick to set the device of a torch Distribution class because there is no interface for this
         for (name, value) in inspect.getmembers(predictions, lambda v: isinstance(v, torch.Tensor)):
@@ -43,12 +50,13 @@ def _move_prediction_device(predictions, device):
     
     
 def _get_prediction_device(predictions):
-    """
-    Get the device of a prediction
-    Inputs: 
-        predictions: any prediction 
-    Outputs:
-        device: the torch device that prediction is on
+    """ Get the device of a prediction
+    
+    Args:
+        predictions: a prediction of any type. 
+        
+    Returns:
+        device: the torch device that prediction is on. 
     """
     if issubclass(type(predictions), torch.distributions.distribution.Distribution):
         with torch.no_grad():  
@@ -62,12 +70,13 @@ def _get_prediction_device(predictions):
 
 
 def _get_prediction_batch_shape(predictions):
-    """
-    Get the batch_shape of the prediction 
-    Inputs:
-        predictions: any prediction
-    Outputs:
-        shape: int
+    """ Get the batch size of the prediction.
+    
+    Args:
+        predictions: a batch of predictions of any type. 
+    
+    Returns:
+        int: the batch size of the prediction. 
     """
     if hasattr(predictions, 'batch_shape'):
         return predictions.batch_shape[0]
@@ -79,8 +88,7 @@ def _get_prediction_batch_shape(predictions):
 
 
 def _parse_name(name):
-    """
-    Parse the name of an ensemble prediction 
+    """ Parse the name of an ensemble prediction 
     """
     components = name.split('_')
     assert len(components) == 2, 'Name does not follow the convention of type_userdefined, such as point_alice or distribution_bob123'
