@@ -2,10 +2,7 @@ import torch
 import inspect 
 # Define several data types
 
-from . import dataset
-from . import evaluate
-from . import transform
-from . import models 
+
 
 data_types = ['point', 'interval', 'particle', 'distribution', 'quantile']
 
@@ -121,3 +118,10 @@ def _check_valid(predictions, ptype):
     
     else:
         assert False, "Unknown prediction type %s" % ptype
+
+        
+        
+from . import dataset
+from . import evaluate
+from . import transform
+from . import models 
