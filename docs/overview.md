@@ -1,8 +1,8 @@
-# Basics
+# Overview
 
-This page contains the basic design philosophy and usage of TorchUQ.
+This page contains an overview of the design philosophy and usage of TorchUQ.
 
-The core of TorchUQ consists of the following three components: prediction types, evaluation, and transformation.
+The core of TorchUQ consists of the following three components: prediction types, evaluation metrics, and transformations.
 
 ## 1. Prediction types 
 
@@ -52,7 +52,7 @@ Most visualization functions take three arguments (but some may take more or les
 - ```ax```: the matplotlib axes to make the figure on. If ```ax is None``` (recommended), then a new figure (of suitable size) will be created. If ```ax is not None``` then you should make sure the figure has the right size for visual appeal of the plot. 
 
 
-## 3. Transform
+## 3. Transformations
 
 The final and key component of TorchUQ is transformation. We will want to transform low quality predictions (such as uncalibrated predictions) into new high quality predictions, usually with the help of some data. 
 
@@ -93,3 +93,31 @@ Finally many algorithms can be used in the online prediction setup, where data b
 ```Calibrator.update(predictions, labels, side_feature=None) ```
 
 This function works in the same way as ```calibrator.train```---except that instead of training the calibrator from scratch, it updates the calibrator with the new data. For an online prediction example see [link]. 
+
+### Transformations Options
+
+While the above discussion concerns transformations with data, TorchUQ also supports
+direct transformations between types. For example, given a distribution prediction, we
+can take the 95% credible interval as an interval prediction. The follow tables show the
+options for direct transformations.
+
+#### Transformations for regression prediction types
+
+|              | Point  | Distribution | Interval | Quantile | Particle |
+| :----------: | :----: | :----------: | :------: | :------: | :------: |
+|    Point     |   -    |      No      |    No    |    No    |    No    |
+| Distribution |  Yes   |      -       |   Yes    |   Yes    |   Yes    |
+|   Interval   |  Yes   |      No      |    -     |    No    |    No    |
+|   Quantile   | ->Dist |     Yes      |  ->Dist  |    -     |  ->Dist  |
+|   Particle   | ->Dist |     Yes      |  ->Dist  |   Yes    |  ->Dist  |
+|   Ensemble   | ->Dist |     Yes      |  ->Dist  |  ->Dist  |  ->Dist  |
+
+
+#### Transformations for classification prediction types
+
+|             | topk | categorical | uset |
+| :---------: | :--: | :---------: | :--: |
+|    topk     |  -   |             |      |
+| categorical | Yes  |      -      | Yes  |
+|    uset     |      |             |  -   |
+|  ensemble   |      |             |      |
