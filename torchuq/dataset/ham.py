@@ -38,7 +38,7 @@ class HAM10000(Dataset):
         return X, y
     
 
-def get_ham10000(data_dir='.', split_seed=0, test_fraction=0.2, val_fraction=0.2, balance_train=True, verbose=True, input_size=224):
+def get_ham10000(data_dir='.', test_fraction=0.2, val_fraction=0.2, split_seed=0, balance_train=True, verbose=True, input_size=224):
     """ Retrieve the HAM10000 dataset. 
     
     To use this function, download the dataset folders HAM10000_images_part_1 and HAM10000_images_part_2 and the meta-data file https://www.kaggle.com/kmader/skin-cancer-mnist-ham10000
@@ -47,10 +47,9 @@ def get_ham10000(data_dir='.', split_seed=0, test_fraction=0.2, val_fraction=0.2
     
     Args:
         data_dir (str): the data folder. 
-        split_seed (int): the random seed to split the dataset. 
         val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None.
         test_fraction (float): fraction of the dataset used for the test set, if 0 then test dataset will return None.
-        split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled.
+        split_seed (int): seed used to generate train/test split. 
         balance_train (bool): if True then over-sample under-represented classes in the training set, so that all classes have approximately the same number of samples. 
         verbose (bool): if True then print additional messages. 
         input_size (int): the size of the image. 
