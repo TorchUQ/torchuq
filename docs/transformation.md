@@ -1,10 +1,7 @@
-# Basic Transformations
-
+# Transformations
 
 
 ## Transformations for regression prediction types
-
-
 
 |              | Point  | Distribution | Interval | Quantile | Particle |
 | :----------: | :----: | :----------: | :------: | :------: | :------: |
@@ -16,10 +13,7 @@
 |   Ensemble   | ->Dist |     Yes      |  ->Dist  |  ->Dist  |  ->Dist  |
 
 
-
-Transformations for classification prediction types
-
-
+## Transformations for classification prediction types
 
 |             | topk | categorical | uset |
 | :---------: | :--: | :---------: | :--: |
