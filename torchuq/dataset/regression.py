@@ -1,5 +1,5 @@
 """
-IO module for UCI datasets for regression
+IO module for UCI datasets for regression.
 
 Much of the code is adapted from: https://github.com/aamini/evidential-regression/blob/c0823f18ff015f5eb46a23f0039f4d62b76bc8d1/data_loader.py
 """
@@ -18,8 +18,8 @@ dataset_names = dataset_names_uci + ["kin8nm", "medical-expenditure"]
 
 
 def get_regression_datasets(name, val_fraction=0.2, test_fraction=0.2, split_seed=0, normalize=True, verbose=True):
-    r""" Returns a UCI regression dataset in the form of a torch Dataset
-    
+    r"""Returns a UCI regression dataset in the form of a torch Dataset.
+
     Arguments:
         name (str): name of the dataset.
         val_fraction (float): fraction of dataset to use for validation, if 0 then val dataset will return None.
@@ -27,7 +27,7 @@ def get_regression_datasets(name, val_fraction=0.2, test_fraction=0.2, split_see
         split_seed (int): seed used to generate train/test split, if split_seed=-1 then the dataset is not shuffled.
         normalize (bool): if True then normalize the dataset to have zero mean and unit variance.
         verbose (bool): if True then print additional messages. 
-        
+
     Returns:
         train_dataset (torch.utils.data.Dataset): training dataset.
         val_dataset (torch.utils.data.Dataset): validation dataset, None if val_fraction=0.0.
@@ -68,7 +68,7 @@ def get_regression_datasets(name, val_fraction=0.2, test_fraction=0.2, split_see
 
         data = (data - mu) / scale
         return data, mu, scale
-    
+
     # Extract the training set
     index_train = permutation[size_val+size_test:]
     X_train = X[index_train, :]
