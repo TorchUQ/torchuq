@@ -7,3 +7,4 @@ This section contains the Python API reference for TorchUQ.
   :maxdepth: 1
 
   evaluate
+  dataset
