@@ -11,4 +11,6 @@ User Guide
 
   installation
   quick_start
+  basics
+  transformation
   api_reference/index

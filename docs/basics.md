@@ -57,7 +57,7 @@ The final and key component of torchuq is transformation. We will want to transf
 
 The main workhorse for transformation is the Calibrator abstract class, which defines a unified interface for an extremely large collection of calibration algorithms (including standard calibration algorithms, conformal prediction, decision calibration, multi-calibration, and many more).
 
-![Calibration Illustration](../illustrations/calibrator.png)
+![Calibration Illustration](illustrations/calibrator.png)
 
 A calibrator class has three main functions: 
 
