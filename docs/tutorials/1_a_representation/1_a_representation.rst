@@ -132,8 +132,7 @@ its shape.
 
 
 There are many ways to visualize or measure the quality of a point
-prediction. Here we explain several common ones. For other
-visualizations and metrics please refer to [TBD]
+prediction. Here we explain several common ones.
 
 **Scatter plot** visualizes the relationship between the prediction and
 the label. On the x-axis we plot the predicted value, and on the y-axis
@@ -161,7 +160,7 @@ compute scoring rules [1].
     prediction is? A function that evaluates prediction quality is
     usually called a scoring rule :math:`s`, which is a map
     :math:`s: x, y \mapsto s(x, y) \in \mathbb{R}`. An example scoring
-    rule is the L2 score: :math:`s_{\mathrm{L2}}(x, y) = (x - y)^2`.
+    rule is the L2 score: :math:`s_{\text{L2}}(x, y) = (x - y)^2`.
     Intuitively, a high score indicates a poor prediction, and a low
     score indicates a good prediction. However, the exact meaning of
     good vs. poor prediction is ambiguous. The key issue is that a point
@@ -189,7 +188,7 @@ compute scoring rules [1].
 
     .. math::  \mathbb{E}[s(F(d_Y), Y)] \leq \mathbb{E}[s(x, Y)], \forall x 
 
-     i.e. no prediction :math:`x` can achieve a smaller expected score
+    i.e. no prediction :math:`x` can achieve a smaller expected score
     than the desired prediction :math:`F(d_Y)`. Many functionals have
     simple scoring rules that elicit them, as shown in the table below:
 
@@ -353,7 +352,7 @@ compute scoring rules [1].
 
        <th>
 
-    :math:`\sup \lbrace y \mid \mathrm{Pr}[Y \leq y] \leq \alpha \rbrace`
+    :math:`\sup \lbrace y \mid \Pr[Y \leq y] \leq \alpha \rbrace`
 
     .. raw:: html
 
@@ -513,11 +512,11 @@ A distribution prediction is a cumulative distribution function (CDF)
 over the label, i.e. it is a function :math:`f: \mathbb{R} \to [0, 1]`
 that is monotonic and upward continuous. Ideally, a distribution
 prediction :math:`f` should predict the true probability $ f(c) =
-:raw-latex:`\mathrm{Pr}`[Y :raw-latex:`\leq `c], :raw-latex:`\forall `c$
-although this is usually very difficult to achieve exactly [2,3].
-Distribution predictions are very informative. For example, if we want
-to predict the price of a house, then a CDF prediction would specify the
-(predicted) probability of each possible price value.
+:raw-latex:`\Pr[Y \leq c]`, :raw-latex:`\forall `c$ although this is
+usually very difficult to achieve exactly [2,3]. Distribution
+predictions are very informative. For example, if we want to predict the
+price of a house, then a CDF prediction would specify the (predicted)
+probability of each possible price value.
 
 Torchuq inherits the pytorch interface for representing a distribution,
 i.e. a distribution prediction is represented by any class that inherits
@@ -591,8 +590,8 @@ we can use proper scoring rules.
 
     .. math::  \mathbb{E}[s(f^*, Y)] \leq \mathbb{E}[s(f, Y)], \forall \text{ CDF } f
 
-     In other words, no CDF can achieve a smaller score than the true
-    CDF :math:`f^*` (in expectation). Scoring rules for distribution
+    In other words, no CDF can achieve a smaller score than the true CDF
+    :math:`f^*` (in expectation). Scoring rules for distribution
     predictions are usually different from scoring rules for point
     predictions.
 
@@ -608,7 +607,7 @@ we can use proper scoring rules.
        <li>
 
     The negative log likelihood (NLL), defined by
-    :math:`s_{\mathrm{NLL}}(f, y) = -\log f'(y)`. Log likelihood is only
+    :math:`s_{\text{NLL}}(f, y) = -\log f'(y)`. Log likelihood is only
     defined when :math:`f` is differentiable (i.e. has a density
     function).
 
@@ -621,7 +620,7 @@ we can use proper scoring rules.
        <li>
 
     The continuous ranked probability score (CRPS), defined by
-    :math:`s_{\mathrm{CRPS}}(f, y) = \int (f(x) - \mathbb{I}(x \geq y))^2 dx`.
+    :math:`s_{\text{CRPS}}(f, y) = \int (f(x) - \mathbb{I}(x \geq y))^2 dx`.
     Unlike NLL, CRPS is defined even when :math:`f` is not
     differentiable.
 
@@ -681,9 +680,9 @@ however it is only meaningful to talk about probabilistic calibration
 for a set/batch of predictions. Here we should think of :math:`F` a
 randomly selected prediction from the set/batch, and :math:`Y` is the
 label associated with the selected prediction.) Perfect probabilistic
-calibration is defined by :raw-latex:`\begin{align}
-\mathrm{Pr}[Y \leq F^{-1}(\alpha)] = \Pr[F(Y) \leq \alpha] = \alpha, \forall \alpha \in [0, 1] \label{eq:perfect_calibration}\tag{1}
-\end{align}`
+calibration is defined by
+
+.. math:: \Pr[Y \leq F^{-1}(\alpha)] = \Pr[F(Y) \leq \alpha] = \alpha, \forall \alpha \in [0, 1] \label{eq:perfect_calibration}\tag{1}
 
 Probabilitic calibration is only one of many calibration properties for
 distribution predictions. For additional calibration notions see [2].
@@ -692,8 +691,7 @@ To measure probabilistic calibration we can compute the deviation from
 perfect probabilistic calibration. There are two typical tools
 
 1. **ECE metrics** measures the average difference between the left hand
-   side (LHS) and the right hand side (RHS) of
-   Eq.(:raw-latex:`\ref{eq:perfect_calibration}`)
+   side (LHS) and the right hand side (RHS) of Eq.(1)
 
    .. math::  \int_0^1 |\Pr[F(Y) \leq \alpha] - \alpha| d\alpha 
 
@@ -832,7 +830,7 @@ represent a quantile prediction as an array of shape
 specified). The quantile probabilities are defined implicitly by the
 shape of the array (i.e. the value of ``num_quantiles``). It is
 implicitly defined as
-:math:`\frac{1}{2 * \text{num_quantiles}}, \frac{3}{2 * \text{num_quantiles}}, \cdots, \frac{2 * \text{num_quantiles}-1}{2 * \text{num_quantiles}}`.
+:math:`\frac{1}{2 * \text{num quantiles}}, \frac{3}{2 * \text{num quantiles}}, \cdots, \frac{2 * \text{num quantiles}-1}{2 * \text{num quantiles}}`.
 For example, if ``num_quantiles=10`` then the quantile probabilities are
 implicitly defined as :math:`0.05, 0.15, \cdots, 0.95`.
 
