@@ -13,7 +13,7 @@ techniques.
 
    <!-- Recalibration methods are a set of post-processing techniques for adjusting predicted probabilities to make them better calibrated. -->
 
-.. code:: ipython3
+.. code:: python
 
     # We must first import the dependencies, and make sure that the torchuq package is in PYTHONPATH
     # If you are running this notebook in the original directory as in the repo, then the following statement should work
@@ -22,7 +22,7 @@ techniques.
     import torch  
     from matplotlib import pyplot as plt
 
-.. code:: ipython3
+.. code:: python
 
     reader = torch.load('pretrained/resnet18-cifar10.pt')
     predictions = reader['categorical']
@@ -32,7 +32,7 @@ Most calibration algorithms are in the ``torchuq.transform.calibrate``
 module, with the exception of decision calibration, which is in the
 ``torchuq.transform.decision`` module.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import categorical
     from torchuq.transform.calibrate import *
@@ -90,7 +90,7 @@ that you need to know:
 3. Test: ``test_intervals = TemperatureScaling(test_preds)`` outputs the
    recalibrated predictions
 
-.. code:: ipython3
+.. code:: python
 
     categorical.plot_reliability_diagram(predictions, labels);
 
@@ -99,7 +99,7 @@ that you need to know:
 .. image:: output_8_0.png
 
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = TemperatureScaling(verbose=True)
     calibrator.train(predictions, labels)
@@ -120,7 +120,7 @@ that you need to know:
     _change_device is deprecated 
 
 
-.. code:: ipython3
+.. code:: python
 
     categorical.plot_reliability_diagram(predictions_ts, labels);
 
@@ -147,7 +147,7 @@ HistogramBinning class. In this case, histogram binning appears to
 achieve better calibration than temeprature scaling, as shown in the
 visualized reliability diagram.
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = HistogramBinning(verbose=True)
     calibrator.train(predictions, labels)
@@ -188,7 +188,7 @@ networks, it can be implemented as additional layers: a logarithmic
 transformation followed by a fully connected layer with softmax
 activation.
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = DirichletCalibrator(verbose=True)
     calibrator.train(predictions, labels)
@@ -230,7 +230,7 @@ Decision Calibration
 [TBD]
 
 References
-==========
+----------
 
 [1] Chuan Guo, Geoff Pleiss, Yu Sun, and Kilian Weinberger. “On
 Calibration of Modern Neural Networks.” International Conference on
