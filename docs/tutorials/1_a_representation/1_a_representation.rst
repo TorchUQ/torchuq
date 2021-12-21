@@ -15,8 +15,8 @@ cumulative density function (CDF). Each representation has its pros and
 cons. Depending on the different requirements during
 training/deployment, we might even want to convert between different
 representations. For example, we might initially start from an ensemble
-prediction (i.e. a set of predictions) (possibly because we trained
-multiple prediction models), then convert it into a cumulative density
+prediction (i.e. a set of predictions) possibly because we trained
+multiple prediction models, then convert it into a cumulative density
 function prediction or a point prediction (which are more interpretable
 and easier to work with). Conversion is one of the main features of
 torchuq, and we will come back to this topic in a later tutorial.
@@ -79,10 +79,10 @@ regression. You can skip this part and come back later as a reference.
 +------------------+------------------------+---------------+---------+
 
 Torchuq uses mandatory batching. For example, a point prediction
-variable (which is an ``array [batch_size]``) represents a sequence of
-predictions on a dataset with ``batch_size`` many samples. Even if the
-dataset only contains 1 sample (i.e. ``batch_size=1``), the predictions
-must be an array ``[1]`` rather than a scalar.
+variable (which is an array with shape ``[batch_size]``) represents a
+sequence of predictions on a dataset with ``batch_size`` many samples.
+Even if the dataset only contains 1 sample (i.e. ``batch_size=1``), the
+predictions must be an array of shape ``[1]`` rather than a scalar.
 
 Running example
 ---------------
@@ -155,40 +155,41 @@ compute scoring rules [1].
 
     **A Detour into the Theory of Scoring Rules**
 
-    Suppose we make a prediction :math:`x` and observe true label
-    :math:`y`. How do we quantitatively evaluate how good or bad the
+    Suppose we make a prediction :math:`y` and observe true label
+    :math:`Y`. How do we quantitatively evaluate how good or bad the
     prediction is? A function that evaluates prediction quality is
     usually called a scoring rule :math:`s`, which is a map
-    :math:`s: x, y \mapsto s(x, y) \in \mathbb{R}`. An example scoring
-    rule is the L2 score: :math:`s_{\text{L2}}(x, y) = (x - y)^2`.
+    :math:`s: y, Y \mapsto s(y, Y) \in \mathbb{R}`. An example scoring
+    rule is the L2 score: :math:`s_{\text{L2}}(y, Y) = (y - Y)^2`.
     Intuitively, a high score indicates a poor prediction, and a low
     score indicates a good prediction. However, the exact meaning of
     good vs. poor prediction is ambiguous. The key issue is that a point
     prediction is never “perfect” if there is any uncertainty. If we
-    predict :math:`x` while the true label is distributed according to
-    the random variable :math:`Y`, then we can never have :math:`x = Y`
-    almost surely (unless there is no randomness so :math:`Y` is a
-    deterministic random variable). For example, the median and the mean
-    of :math:`Y` might be different, one practitioner might want to
-    predict the median, and another practitioner might want to predict
-    the mean. The two goals are inherently conflictory.
+    predict :math:`y` while the true label is distributed according to
+    the random variable :math:`Y`, then we can never have :math:`y = Y`
+    almost surely (unless :math:`Y` is a deterministic random variable).
+    For example, the median and the mean of :math:`Y` might be
+    different, one practitioner might want to predict the median, and
+    another practitioner might want to predict the mean. The two goals
+    are inherently conflictory.
 
     To resolve the ambiguity we can specify the prediction target [1].
     For example, we can aim to predict the mean, and design a scoring
     function that is small (i.e. indicates a good prediction) if the
-    prediction :math:`x` is “close” to the mean :math:`\mathbb{E}[Y]`.
+    prediction :math:`y` is “close” to the mean :math:`\mathbb{E}[Y]`.
     More generally, let :math:`d_Y` denote the probability law of the
     random variable :math:`Y`, we specify some functional
-    :math:`F: d_Y \mapsto \mathbb{R}` and aim to predict :math:`F(d_Y)`.
-    In the previous example, :math:`F` is the mean functional
-    :math:`F(d_Y) = \mathbb{E}(Y)`. We say that a scoring rule :math:`s`
-    elicits :math:`F` if the score is small whenever
-    :math:`x \approx F(d_Y)` and large whenever
-    :math:`x \not\approx F(d_Y)`. Formally this is defined by
+    :math:`F: d_Y \mapsto \mathbb{R}` and aim to predict
+    :math:`\mathbb{F}(d_Y)`. In the previous example, :math:`\mathbb{F}`
+    is the mean functional :math:`\mathbb{F}(d_Y) = \mathbb{E}(Y)`. We
+    say that a scoring rule :math:`s` elicits :math:`\mathbb{F}` if the
+    score is small whenever :math:`y \approx \mathbb{F}(d_Y)` and large
+    whenever :math:`y \not\approx \mathbb{F}(d_Y)`. Formally this is
+    defined by
 
-    .. math::  \mathbb{E}[s(F(d_Y), Y)] \leq \mathbb{E}[s(x, Y)], \forall x 
+    .. math::  \mathbb{E}[s(\mathbb{F}(d_Y), Y)] \leq \mathbb{E}[s(y, Y)], \forall y 
 
-    i.e. no prediction :math:`x` can achieve a smaller expected score
+    i.e. no prediction :math:`y` can achieve a smaller expected score
     than the desired prediction :math:`F(d_Y)`. Many functionals have
     simple scoring rules that elicit them, as shown in the table below:
 
@@ -205,14 +206,6 @@ compute scoring rules [1].
        <th>
 
     Functional
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
 
     .. raw:: html
 
@@ -249,16 +242,6 @@ compute scoring rules [1].
        <th>
 
     Mean
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
-
-    :math:`E[Y]`
 
     .. raw:: html
 
@@ -306,14 +289,6 @@ compute scoring rules [1].
 
        <th>
 
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
-
     MAE score
 
     .. raw:: html
@@ -352,16 +327,6 @@ compute scoring rules [1].
 
        <th>
 
-    :math:`\sup \lbrace y \mid \Pr[Y \leq y] \leq \alpha \rbrace`
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
-
     Pinball/hinge score
 
     .. raw:: html
@@ -390,61 +355,7 @@ compute scoring rules [1].
 
        <th>
 
-    :math:`\alpha`-expectile
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
-
     Unnamed
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
-
-    :math:`s(x, y) = TBD`
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       </tr>
-
-    .. raw:: html
-
-       <tr>
-
-    .. raw:: html
-
-       <th>
-
-    Unnamed
-
-    .. raw:: html
-
-       </th>
-
-    .. raw:: html
-
-       <th>
 
     .. raw:: html
 
@@ -480,7 +391,7 @@ compute scoring rules [1].
 
     For example, the typical L2 loss used in most regression problems
     elicit the mean functional. In other words, it rewards a prediction
-    :math:`x` that equals the expectation :math:`E[Y]` (conditioned on
+    :math:`y` that equals the expectation :math:`E[Y]` (conditioned on
     all observed variables) but may penalize a prediction that equals
     the median or mode. Not all functionals have a scoring rule that
     elicit them. For example, the conditional value at risk (cVaR) [1]
@@ -491,8 +402,7 @@ compute scoring rules [1].
 
 In torchuq common scoring rules are implemented with the
 ``compute_scores`` function. This function returns a dictionary with
-many common scores. To access individual scoring rules please refer to
-[TBD]
+many common scores.
 
 .. code:: ipython3
 
@@ -544,18 +454,19 @@ has the correct type.
 There are several metrics and visualizations available for distribution
 predictions:
 
-**Density Visualization** A way to intuitively visualize the predicted
-CDF is to visualize its `probability density
+**Density Visualization** A way to intuitively visualize a distribution
+prediction is to visualize its `probability density
 function <https://en.wikipedia.org/wiki/Probability_density_function>`__
 (when it exists). In torchuq this is achieved by
 ``distribution.plot_density_sequence`` which takes as input a batch of
-CDF predictions, and plots the density for each prediction. The x-axis
-is the index of the prediction in the batch.
+distribution predictions, and plots the density for each prediction. The
+x-axis is the index of the prediction in the batch.
 
-**CDF Visualization** We can also visualize the CDF functions directly.
-This is particularly useful when density visualzation fails. For
-example, not all distributions have a density because the CDF could be
-dis-continnuous. In torchuq, visualizing the CDF is accomplished by the
+**CDF Visualization** We can also visualize the cumulative density
+function (CDF) of the distribution prediction. This is particularly
+useful when density visualzation fails. For example, not all
+distributions have a density because the CDF could be dis-continnuous.
+In torchuq, visualizing the CDF is accomplished by the
 ``distribution.plot_cdf_sequence`` function.
 
 .. code:: ipython3
@@ -575,8 +486,6 @@ dis-continnuous. In torchuq, visualizing the CDF is accomplished by the
 .. image:: output_14_1.png
 
 
-For more available visualizations please refer to [TBD]
-
 **Scoring Rules** To evaluate the quality of distribution predictions,
 we can use proper scoring rules.
 
@@ -586,7 +495,7 @@ we can use proper scoring rules.
     is any function that returns small (expected) values when the
     predicted CDF :math:`f` is close to the true CDF :math:`f^*`, and
     large values otherwise. Formally a proper scoring function is a map
-    :math:`s: f, y \mapsto s(f, y) \in \mathbb{R}` that satisfies
+    :math:`s: f, Y \mapsto s(f, Y) \in \mathbb{R}` that satisfies
 
     .. math::  \mathbb{E}[s(f^*, Y)] \leq \mathbb{E}[s(f, Y)], \forall \text{ CDF } f
 
@@ -632,9 +541,9 @@ we can use proper scoring rules.
 
        </ul>
 
-In torchuq, the different scoring rules are implemented by functions
-such as ``distribution.compute_crps`` or ``distribution.compute_nll``.
-If the score is not defined then these functions will return nan.
+In torchuq, scoring rules are implemented by functions such as
+``distribution.compute_crps`` or ``distribution.compute_nll``. If the
+score is not defined then these functions will return nan.
 
 .. code:: ipython3
 
@@ -682,7 +591,7 @@ randomly selected prediction from the set/batch, and :math:`Y` is the
 label associated with the selected prediction.) Perfect probabilistic
 calibration is defined by
 
-.. math:: \Pr[Y \leq F^{-1}(\alpha)] = \Pr[F(Y) \leq \alpha] = \alpha, \forall \alpha \in [0, 1] \label{eq:perfect_calibration}\tag{1}
+.. math:: \Pr[Y \leq F^{-1}(\alpha)] = \Pr[F(Y) \leq \alpha] = \alpha, \forall \alpha \in [0, 1] 
 
 Probabilitic calibration is only one of many calibration properties for
 distribution predictions. For additional calibration notions see [2].
@@ -691,7 +600,7 @@ To measure probabilistic calibration we can compute the deviation from
 perfect probabilistic calibration. There are two typical tools
 
 1. **ECE metrics** measures the average difference between the left hand
-   side (LHS) and the right hand side (RHS) of Eq.(1)
+   side (LHS) and the right hand side (RHS) of equation above.
 
    .. math::  \int_0^1 |\Pr[F(Y) \leq \alpha] - \alpha| d\alpha 
 
@@ -717,7 +626,7 @@ perfect probabilistic calibration. There are two typical tools
 
 .. parsed-literal::
 
-    Debiased ECE is 0.070
+    Debiased ECE is 0.069
 
 
 
@@ -774,7 +683,15 @@ interval).
 
 
 
-.. image:: output_25_0.png
+
+.. parsed-literal::
+
+    <AxesSubplot:xlabel='sample index', ylabel='label value'>
+
+
+
+
+.. image:: output_25_1.png
 
 
 **Length and Coverage** Two important metrics for (a batch of) interval
@@ -885,7 +802,15 @@ predictions). In torchuq we can plot a quantile calibration diagram by
 
 
 
-.. image:: output_33_0.png
+
+.. parsed-literal::
+
+    <AxesSubplot:xlabel='target quantiles', ylabel='actual quantiles'>
+
+
+
+
+.. image:: output_33_1.png
 
 
 In this case, the prediction is not calibrated. For example, the
