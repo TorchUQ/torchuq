@@ -94,7 +94,7 @@ learn these predictions from data (hint: it only takes a few lines of
 code). But for now let’s just load the pretrained predictions for
 visualization.
 
-.. code:: ipython3
+.. code:: python
 
     import torch  
     from matplotlib import pyplot as plt
@@ -120,7 +120,7 @@ A point prediction is represented by an torch array of shape
 ``[batch_size]``. Here we load the pretrained point prediction and print
 its shape.
 
-.. code:: ipython3
+.. code:: python
 
     predictions_point = reader['predictions_point']
     print(predictions_point.shape)
@@ -140,7 +140,7 @@ we plot the true label. If the prediction is perfect, then all points
 should lie on the diagonal line (i.e. predicted value = true label). In
 torchuq this is accomlished by the ``plot_scatter`` function.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import point    # All point prediction metrics and visualizations are included in the torchuq.metric.point sub-package. 
     point.plot_scatter(predictions_point, labels);
@@ -404,7 +404,7 @@ In torchuq common scoring rules are implemented with the
 ``compute_scores`` function. This function returns a dictionary with
 many common scores.
 
-.. code:: ipython3
+.. code:: python
 
     scores = point.compute_scores(predictions_point, labels)
     print(scores)
@@ -421,8 +421,8 @@ many common scores.
 A distribution prediction is a cumulative distribution function (CDF)
 over the label, i.e. it is a function :math:`f: \mathbb{R} \to [0, 1]`
 that is monotonic and upward continuous. Ideally, a distribution
-prediction :math:`f` should predict the true probability $ f(c) =
-:raw-latex:`\Pr[Y \leq c]`, :raw-latex:`\forall `c$ although this is
+prediction :math:`f` should predict the true probability :math:`f(c) =
+\text{Pr}[Y \leq c], \forall c` although this is
 usually very difficult to achieve exactly [2,3]. Distribution
 predictions are very informative. For example, if we want to predict the
 price of a house, then a CDF prediction would specify the (predicted)
@@ -438,7 +438,7 @@ behave like
 Here we load the pretrained distribution prediction and verify that it
 has the correct type.
 
-.. code:: ipython3
+.. code:: python
 
     predictions_distribution = reader['predictions_distribution']
     print(predictions_distribution)
@@ -469,7 +469,7 @@ distributions have a density because the CDF could be dis-continnuous.
 In torchuq, visualizing the CDF is accomplished by the
 ``distribution.plot_cdf_sequence`` function.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import distribution     # All distribution prediction metrics and visualizations are included in the torchuq.metric.point sub-package. 
     # Pass in the optional argument "labels" to plot the true labels in the same diagram
@@ -545,7 +545,7 @@ In torchuq, scoring rules are implemented by functions such as
 ``distribution.compute_crps`` or ``distribution.compute_nll``. If the
 score is not defined then these functions will return nan.
 
-.. code:: ipython3
+.. code:: python
 
     crps = distribution.compute_crps(predictions_distribution, labels).mean()
     nll = distribution.compute_nll(predictions_distribution, labels).mean()
@@ -562,7 +562,7 @@ scoring rules. If we try to predict a less accurate distribution (for
 example by intentionally shifting the predicted distribution), then the
 CRPS/NLL score will increase.
 
-.. code:: ipython3
+.. code:: python
 
     # Try computing the crps for a worse predictive distribution 
     import copy
@@ -616,7 +616,7 @@ perfect probabilistic calibration. There are two typical tools
    interval, then it very likely that the predictor is not calibrated on
    the entire population either.
 
-.. code:: ipython3
+.. code:: python
 
     # ECE estimation is biased, if you enable the debiased option, then the expected ECE will be 0 for a perfectly calibrated predictor
     ece = distribution.compute_ece(predictions_distribution, labels, debiased=True) 
@@ -660,7 +660,7 @@ of the :math:`i`-th prediction and ``prediction[i, 1]`` denotes the
 upper bound of the :math:`i`-th prediction. Here we load the example
 interval prediction and verify that it has the right shape.
 
-.. code:: ipython3
+.. code:: python
 
     predictions_interval = reader['prediction_interval']
     print(predictions_interval.shape)
@@ -676,7 +676,7 @@ interval prediction. The different colors indicate whether the interval
 prediction is valid or not (i.e. if the label belongs to the predicted
 interval).
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import interval 
     interval.plot_interval_sequence(predictions_interval, labels)
@@ -704,7 +704,7 @@ know how many proportion of the intervals have a size that’s less than
 0.3, 0.5, etc. This can be accomlished by the function
 ``plot_length_cdf``.
 
-.. code:: ipython3
+.. code:: python
 
     length = interval.compute_length(predictions_interval)
     coverage = interval.compute_coverage(predictions_interval, labels)
@@ -755,7 +755,7 @@ Here we load the pretrained quantile predictions and verify that it has
 the correct shape. We use the implicit representation (with shape
 ``[batch_size, num_quantiles]``).
 
-.. code:: ipython3
+.. code:: python
 
     predictions_quantile = reader['predictions_quantile']
     print(predictions_quantile.shape)   # Here the quantiles are implicitly defined
@@ -779,7 +779,7 @@ label is also provided, it is plotted as green crosses. The x-axis is
 the index of the samples (e.g. ``predictions[0], predictions[1],``
 :math:`\cdots`).
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import quantile 
     quantile.plot_quantile_sequence(predictions_quantile, labels);
@@ -796,7 +796,7 @@ diagram is almost the same as the reliability diagram (for distribution
 predictions). In torchuq we can plot a quantile calibration diagram by
 ``quantile.plot_quantile_calibration``.
 
-.. code:: ipython3
+.. code:: python
 
     quantile.plot_quantile_calibration(predictions_quantile, labels)
 
@@ -827,7 +827,7 @@ quantile predictions, a very important proper scoring rule is the
 
 The following is an example of the pinball loss implemented in torchuq.
 
-.. code:: ipython3
+.. code:: python
 
     pinball = quantile.compute_pinball_loss(predictions_quantile, labels).mean()
     print("Pinball loss is %.3f" % pinball)
@@ -839,7 +839,7 @@ The following is an example of the pinball loss implemented in torchuq.
 
 
 References
-==========
+----------
 
 [1] Gneiting, Tilmann. “Making and evaluating point forecasts.” Journal
 of the American Statistical Association 106, no. 494 (2011): 746-762.
