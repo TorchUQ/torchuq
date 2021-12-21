@@ -13,3 +13,4 @@ User Guide
   quick_start
   overview
   api_reference/index
+  tutorials/index

@@ -34,7 +34,7 @@ The main workhorse for conformal prediction is the class
 import it the class, as well as some test prediction data (same as
 tutorial 1.a).
 
-.. code:: ipython3
+.. code:: python
 
     # As before we first setup the environment and load the test prediction
     import sys
@@ -68,7 +68,7 @@ that you need to know
    ``test_intervals = ConformalIntervalPredictor.__call__(test_preds)``
    outputs the valid interval predictions
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = ConformalIntervalPredictor(input_type='quantile', coverage='exact')
     calibrator.train(val_preds, val_labels)
@@ -80,7 +80,7 @@ our ``confidence=0.9``. This is not a conincidence, as conformal
 prediction can guarantees coverage if the data is i.i.d. (in fact, it
 only requires exchangeability).
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import interval
     interval.plot_interval_sequence(test_intervals, test_labels)
@@ -107,7 +107,7 @@ interval and output :math:`[-\infty, +\infty]`. On the other hand, if
 you choose ``coverage=1/N`` then the calibrator will never predict an
 infinitely large interval.
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = ConformalIntervalPredictor(input_type='quantile', coverage='1/N')
     calibrator.train(val_preds, val_labels)
@@ -122,7 +122,7 @@ infinitely large interval.
 We used quantile predictions as an example. Note that we could use any
 prediction type as input. The following example uses point predictions
 
-.. code:: ipython3
+.. code:: python
 
     # Split the data into validation and test, in this example we will use quantile predictions as the original predictions
     val_preds = reader['predictions_point'][:50]
@@ -153,7 +153,7 @@ validation data, while ``calibrator.train`` removes all validation data
 and starts anew. The following example shows how to make online
 predictions.
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = ConformalIntervalPredictor(input_type='quantile', coverage='exact')
     
@@ -188,7 +188,7 @@ intervals are very large. This is because we selected
 ``coverage='exact'``. If we do not require exact coverage then the
 interval sizes can be much smaller.
 
-.. code:: ipython3
+.. code:: python
 
     calibrator = ConformalIntervalPredictor(input_type='quantile', coverage='1/N')
     
