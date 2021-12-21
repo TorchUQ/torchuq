@@ -64,7 +64,7 @@ reference.
 |                   |                        | l_1’        |          |
 +-------------------+------------------------+-------------+----------+
 
-.. code:: ipython3
+.. code:: python
 
     # We must first import the dependencies, and make sure that the torchuq package is in PYTHONPATH
     # If you are running this notebook in the original directory as in the repo, then the following statement should work
@@ -76,7 +76,7 @@ reference.
 As a running example, we will use existing predictions for CIFAR-10. We
 first load these predictions.
 
-.. code:: ipython3
+.. code:: python
 
     
     reader = torch.load('pretrained/resnet18-cifar10.pt')
@@ -95,7 +95,7 @@ first load these predictions.
 
 The simplest type of prediction specifies the top-k labels (i.e. the k
 most likely predicted labels). The labels are represented as integers
-:math:`\lbrace 0, 1, \cdots, \text{n_classes}-1 \rbrace`. A batch of
+:math:`\lbrace 0, 1, \cdots, \text{n classes}-1 \rbrace`. A batch of
 top-k prediction is represented by an integer array of shape
 ``[batch_size, k]``, where ``predictions[i, :]`` is a sequence of labels
 (which are represented as integers). A top-1 prediction can be either
@@ -105,7 +105,7 @@ conveniently as an array of shape ``[batch_size]``.
 Here, we first verify that the loaded top3 and top1 predictions have the
 correct shape.
 
-.. code:: ipython3
+.. code:: python
 
     print(predictions_top1.shape)
     print(predictions_top3.shape)
@@ -123,7 +123,7 @@ the confusion matrix: among the samples that are predicted as class
 a confusion matrix in torchuq use
 ``torchuq.evaluate.topk.plot_confusion_matrix``.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import topk
     topk.plot_confusion_matrix(predictions_top1, labels);
@@ -135,7 +135,7 @@ a confusion matrix in torchuq use
 
 We can also evaluate metrics for these predictions, such as accuracy
 
-.. code:: ipython3
+.. code:: python
 
     print(topk.compute_accuracy(predictions_top1, labels))
     print(topk.compute_accuracy(predictions_top3, labels))
@@ -157,7 +157,7 @@ prediction is represented as a float array of shape
 ``[batch_size, n_classes]``, where ``predictions[i, j]`` is the
 probability that the :math:`i`-th sample takes the :math:`j`-th label.
 
-.. code:: ipython3
+.. code:: python
 
     print(predictions_categorical.shape)
 
@@ -168,7 +168,7 @@ probability that the :math:`i`-th sample takes the :math:`j`-th label.
 
 
 **Confidence Calibration**. Given a categorical prediction
-:math:`p \in [0, 1]^{\text{n_classes}}`, the confidence of the
+:math:`p \in [0, 1]^{\text{n classes}}`, the confidence of the
 prediction is the largest probability in the array: :math:`\max_i p_i`.
 If this largest probability is close to 1, then the prediction is highly
 confident. A simple but important requirement for this type of
@@ -199,7 +199,7 @@ accuracy and average confidence for each bin. Pictorially, it is the
 average distance between the blue bars and the diagonal in the
 reliability diagram below.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import categorical
     categorical.plot_reliability_diagram(predictions_categorical, labels, binning='uniform');
@@ -238,7 +238,7 @@ For set predictions, there are two important properties to consider:
 Ideally, we would like high coverage with a small set size. We compute
 the coverage and the set size of the example predictions below.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate import uset
     
@@ -250,4 +250,3 @@ the coverage and the set size of the example predictions below.
 .. parsed-literal::
 
     The coverage is 0.987, average set size is 1.268
-
