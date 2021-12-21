@@ -22,7 +22,7 @@ Setting up the Environment
 We first setup the environment of the tutorial. First load the necessary
 dependencies.
 
-.. code:: ipython3
+.. code:: python
 
     from matplotlib import pyplot as plt
     import torch
@@ -59,7 +59,7 @@ specify the random seed used in the data splitting by ``split_seed``.
 The return values are pytorch Dataset instances, which can be
 conveniently used with pytorch dataloaders.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.dataset.regression import get_regression_datasets
     train_dataset, val_dataset, _ = get_regression_datasets('boston', val_fraction=0.2, test_fraction=0.0, verbose=True)
@@ -82,7 +82,7 @@ conveniently used with pytorch dataloaders.
 **Prediction Model**: For simplicity, we use a 3 layer fully connected
 neural network as the prediction function.
 
-.. code:: ipython3
+.. code:: python
 
     class NetworkFC(nn.Module):
         def __init__(self, x_dim, out_dim=1, num_feat=30):
@@ -104,7 +104,7 @@ example, the following code defines a prediction model that outputs
 Gaussian distributions. It is a network that outputs both the mean and
 standard deviation of the Gaussian distribution.
 
-.. code:: ipython3
+.. code:: python
 
     net = NetworkFC(x_dim, out_dim=2).to(device)
     
@@ -115,8 +115,8 @@ To learn the parameters of the prediction model, we can use any proper
 scoring rule. Recall from the previous tutorial: given a prediction
 :math:`q`, and if the true label is :math:`Y` with (unknown)
 distribution :math:`p_Y`, then a proper scoring rule is any function
-that satisfies $ :raw-latex:`\mathbb{E}`[s(p_Y, Y)]
-:raw-latex:`\leq `:raw-latex:`\mathbb{E}`[s(q, Y)] $. Intuitively,
+that satisfies :math:`\mathbb{E}[s(p_Y, Y)]
+\leq \mathbb{E}[s(q, Y)]`. Intuitively,
 predicting the correct distribution :math:`q = p_Y` minimizes the proper
 scoring rule.
 
@@ -124,7 +124,7 @@ In our example we minimize the CRPS score. It could be replaced by the
 negative log likelihood (NLL) or any other proper scoring rule, and the
 results shouldn’t be fundamentally changed.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate.distribution import compute_crps 
     
@@ -163,7 +163,7 @@ We can visualize the predicted distributions on the validation set.
 These are the same functions that were introduced in the previous
 tutorial.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate.distribution import plot_density_sequence, plot_reliability_diagram
     
@@ -194,7 +194,7 @@ for quantiles. For the proper scoring rule we use the pinball loss,
 which is minimized if and only if the predicted quantiles matches the
 true quantiles.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate.quantile import compute_pinball_loss
     
@@ -228,7 +228,7 @@ true quantiles.
     Epoch 40, loss=0.1311
 
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate.quantile import plot_quantile_sequence, plot_quantile_calibration
     
@@ -270,7 +270,7 @@ purposes, we first predict a quantile prediction, then convert it to a
 distribution prediction, and finally optimize a proper scoring rule
 (negative log likelihood) on the distribution prediction.
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.transform.direct import quantile_to_distribution
     from torchuq.evaluate.distribution import compute_crps, compute_nll
@@ -306,7 +306,7 @@ distribution prediction, and finally optimize a proper scoring rule
     Epoch 40, loss=1.7267
 
 
-.. code:: ipython3
+.. code:: python
 
     from torchuq.evaluate.distribution import plot_density_sequence, plot_reliability_diagram
     
@@ -323,12 +323,3 @@ distribution prediction, and finally optimize a proper scoring rule
 
 
 .. image:: output_18_1.png
-
-
-# Save all the predictions we have learned in this tutorial. These are the predictions used in the first tutorial
-torch.save({'labels': val_y.flatten().cpu(),
-            'predictions_point': predictions_point,
-            'predictions_quantile': predictions_quantile,
-            'predictions_distribution': predictions_distribution,
-            'predictions_interval': torch.cat([predictions_quantile[:, :1], predictions_quantile[:, -1:]], dim=1)
-            }, 'pretrained/boston_pretrained.tar')
