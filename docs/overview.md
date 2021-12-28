@@ -117,7 +117,7 @@ options for direct transformations.
 
 |             | topk | categorical | uset |
 | :---------: | :--: | :---------: | :--: |
-|    topk     |  -   |             |      |
+|    topk     |  -   |             | Yes  |
 | categorical | Yes  |      -      | Yes  |
 |    uset     |      |             |  -   |
 |  ensemble   |      |             |      |

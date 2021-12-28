@@ -1,4 +1,5 @@
 import torch
+from torch.nn import functional as F
 from torch.distributions.normal import Normal 
 from .utils import BisectionInverse
 from .. import _implicit_quantiles, _check_valid, _parse_name
@@ -320,3 +321,31 @@ def categorical_to_topk(predictions, k=1):
     if k == 1:
         topk = topk.flatten()
     return topk
+
+
+def topk_to_uset(predictions, num_classes=-1):
+    """ Convert a topk prediction to a uncertainty set prediction 
+    
+    Args:
+        predictions (tensor): a batch of topk predictions
+        num_classes (int): total number of classes. If set to -1, the number of classes will be inferred as one greater than the largest class value in the input tensor.
+    
+    Returns:
+        tensor: the uset prediction 
+    """ 
+    if num_classes <= 0:
+        num_classes = predictions.max() + 1
+    
+    # Use the [batch_size, k] shape
+    if len(predictions.shape) == 1:
+        predictions = predictions.unsqueeze(-1)
+       
+    # Obtain the initial prediction by taking the one-hot of the top1 
+    result = F.one_hot(predictions[:, 0], num_classes)
+        
+    # For all topk that is not top1, set the corresponding element to 1
+    for c in range(1, predictions.shape[1]):
+        result[torch.arange(len(predictions)), predictions[:, c]] = 1
+    
+    return result
+    
