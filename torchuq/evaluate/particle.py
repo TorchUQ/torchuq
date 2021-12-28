@@ -6,27 +6,21 @@ import matplotlib as mpl
 import numpy as np
 import torch
 from .utils import _compute_reduction
+from ..transform import direct
+from .distribution import plot_density_sequence
 
 
-def plot_particles(predictions, labels=None, ax=None, max_count=100):
-    """ 
-    Plot the PDF of the predictions and the labels. For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
+def plot_particle_sequence(predictions, labels=None, ax=None, max_count=100):
+    """ Plot the PDF of the predictions and the labels. 
     
-    Input:
-        predictions: required array [batch_size, n_particles] instance, a batch of particle
-        labels: optinal array [batch_size], the labels
-        ax: optional matplotlib.axes.Axes, the axes to plot the figure on, if None automatically creates a figure with recommended size 
-        max_count: optional int, the maximum number of PDFs to plot
+    For aesthetics the PDFs are reflected along y axis to make a symmetric violin shaped plot
+    
+    Args:
+        predictions (tensor): a batch of particle with shape [batch_size, n_particles]
+        labels (tensor): a batch of labels with shape [batch_size]
+        ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
+        max_count (int): the maximum number of predictions to plot.
     """
-    # Plot at most max_count predictions
-    if len(labels) <= max_count:
-        max_count = len(predictions)
+    pred_dist = direct.particle_to_distribution(predictions)
+    return plot_density_sequence(pred_dist, labels, ax=ax, max_count=max_count)
 
-    if ax is None:
-        optimal_width = max_count / 4
-        if optimal_width < 4:
-            optimal_width = 4
-        plt.figure(figsize=(optimal_width, 4))
-        ax = plt.gca() 
-    
-    
