@@ -16,7 +16,7 @@ def create_example_regression():
     """
     means = torch.randn(50) * 2
     predictions = torch.distributions.normal.Normal(loc=means, scale=torch.ones(50)) 
-    labels = (predictions.sample((1,)).flatten() - means) * 0.5 + means + 0.1 
+    labels = (predictions.sample((1,)).flatten() - means) * 0.5 + means + 0.5
     return predictions, labels
 
 
