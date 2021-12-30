@@ -2,6 +2,6 @@
 
 tensorboard
 sphinx>=2.4.3
-sphinx-rtd-theme>=0.5.2
 sphinx-autodoc-typehints>=1.12.0
 myst-parser>=0.15.2
+furo>=2021.11.23
