@@ -1,7 +1,7 @@
 ## Torchuq [logo here]
 
 > TorchUQ is an extensive library for uncertainty quantification (UQ) based on pytorch.
-> TorchUQ currently supports 10 representations for uncertainty, and almost 100 methods for uncertainty evaluation and visualization, calibration and conformal prediction. 
+> TorchUQ currently supports 10 representations for uncertainty, and around 50 different methods for uncertainty evaluation and visualization, calibration and conformal prediction. 
 
 ## Why TorchUQ 
 
@@ -12,7 +12,7 @@ Accurate uncertainty quantification (UQ) is extremely important in high-stakes a
 ###  For practitioners
 Torchuq aims to provide an easy to use arsenal of uncertainty quantification methods. Torchuq is designed for the following benefits: 
 
-**Plug and Play**: Simple unified interface to access hundreds of UQ methods.  
+**Plug and Play**: Simple unified interface to access a large arsenal of UQ methods.  
 
 **Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines.
 
