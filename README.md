@@ -36,6 +36,7 @@ pypi package link to come
 
 ## Quickstart 
 
+We first import torchuq and the functions that we will use. 
 ```
 import torchuq
 from torchuq.evaluate import distribution 
@@ -46,7 +47,7 @@ In this very simple example, we create a synthetic prediction (which is a set of
 ```
 predictions, labels = create_example_regression()
 ```
-The example predictions are intentially incorrect (i.e. the label is not drawn from the predictions). 
+The example predictions are intentionally incorrect (i.e. the label is not drawn from the predictions). 
 We will recalibrate the distribution with a powerful recalibration algorithm called conformal calibration. It takes as input the predictions and the labels, and learns a recalibration map that can be applied to new data (here for illustration purposes we apply it to the original data). 
 
 ```
@@ -67,5 +68,5 @@ distribution.plot_density_sequence(adjusted_predictions, labels, smooth_bw=10)
 
 ## What's Next? 
 
-A good way to start is to read about the [basic design philosophy and usage](https://torchuq.github.io/docs/overview.html) of the package, then go through these [tutorials](https://github.com/TorchUQ/torchuq/tree/main/examples/tutorial). All the tutorials are interactive jupyter notebooks. You can either download them to run locally or view them statically [here](https://torchuq.github.io/docs/tutorials/index.html). 
+A good way to start is to read about the [basic design philosophy and usage](https://torchuq.github.io/docs/overview.html), then go through these [tutorials](https://github.com/TorchUQ/torchuq/tree/main/examples/tutorial). All the tutorials are interactive jupyter notebooks. You can either download them to run locally or view them statically [here](https://torchuq.github.io/docs/tutorials/index.html). 
 
