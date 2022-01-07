@@ -8,3 +8,4 @@ This section contains the Python API reference for TorchUQ.
 
   evaluate
   dataset
+  transform
