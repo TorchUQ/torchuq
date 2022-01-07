@@ -5,14 +5,13 @@
 
 ## Why TorchUQ 
 
-TorchUQ is a one-stop solution for uncertainty quantification (UQ).
-
-Accurate uncertainty quantification (UQ) is extremely important in high-stakes applications such as autonomous driving, healthcare, and public policy --- prediction models in such applications should know what they do not know. UQ also finds numerous applications in active learning, statistical inference, or in natural science and engineering applications that are rife with sources of uncertainty. 
+Uncertainty quantification (UQ) --- prediction models should know what they do not know --- finds numerous applications in active learning, statistical inference, trustworthy machine learning, or in natural science and engineering applications that are rife with sources of uncertainty. TorchUQ aims to help both practitioners and researchers use UQ methods with ease. 
 
 ###  For practitioners
-Torchuq aims to provide an easy to use arsenal of uncertainty quantification methods. Torchuq is designed for the following benefits: 
 
-**Plug and Play**: Simple unified interface to access a large arsenal of UQ methods.  
+Torchuq provides an easy-to-use arsenal of uncertainty quantification methods with the following key features: 
+
+**Plug and Play**: Simple unified interface to access a large number of UQ methods.  
 
 **Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines.
 
@@ -22,9 +21,9 @@ Torchuq aims to provide an easy to use arsenal of uncertainty quantification met
 
 ### For researchers 
 
-Torchuq aims to provide a easy to use platform for conducting and distributing research on uncertainty quantification. Torchuq is designed for the following benefits: 
+Torchuq provides a platform for conducting and distributing research on uncertainty quantification. Torchuq is designed for the following benefits: 
 
-**Baseline implementation**: TorchUQ provides high quality implementation of many popular baseline methods to standardize comparison. 
+**Baseline implementation**: high quality implementation of many popular baseline methods to standardize comparison. 
 
 **Benchmark datasets**: a large set of datasets used in recent UQ papers with a one-line interface to retrieve these datasets.
 
@@ -73,5 +72,5 @@ distribution.plot_density_sequence(adjusted_predictions, labels, smooth_bw=10)
 
 ## What's Next? 
 
-A good way to start is to read about the [basic design philosophy and usage](https://torchuq.github.io/overview.html) of the package, then go through these [tutorials](https://github.com/TorchUQ/torchuq/tree/main/examples/tutorial). All the tutorials are interactive jupyter notebooks. You can either download them to run locally or view them [here](https://torchuq.github.io/tutorials/index.html). 
+A good way to start is to read about the [basic design philosophy and usage](https://torchuq.github.io/docs/overview.html) of the package, then go through these [tutorials](https://github.com/TorchUQ/torchuq/tree/main/examples/tutorial). All the tutorials are interactive jupyter notebooks. You can either download them to run locally or view them statically [here](https://torchuq.github.io/docs/tutorials/index.html). 
 
