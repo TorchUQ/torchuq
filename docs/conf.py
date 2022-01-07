@@ -63,6 +63,26 @@ html_show_sphinx = True
 # documentation.
 #
 html_theme_options = {
+    "dark_css_variables": {
+        "color-problematic": "#b30000",
+        "color-foreground-primary:": "black",
+        "color-foreground-secondary": "#5a5c63",
+        "color-foreground-muted": "#646776",
+        "color-foreground-border": "#878787",
+        "color-background-primary": "white",
+        "color-background-secondary": "#f8f9fb",
+        "color-background-hover": "#efeff4ff",
+        "color-background-hover--transparent": "#efeff400",
+        "color-background-border": "#eeebee",
+        "color-brand-primary": "#2962ff",
+        "color-brand-content": "#2a5adf",
+        "color-highlighted-background": "#ddeeff",
+        "color-guilabel-background": "#ddeeff80",
+        "color-guilabel-border": "#bedaf580",
+        "color-highlight-on-target": "#ffffcc",
+        "color-admonition-background": "transparent",
+        "color-card-background": "transparent",
+    },
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
