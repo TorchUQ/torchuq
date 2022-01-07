@@ -31,7 +31,7 @@ def compute_crps(predictions, labels, reduction='mean', resolution=500):
         resolution (int): the number of discretization bins, higher resolution increases estimation accuracy but also requires more memory/compute.
         
     Returns:
-        tensor: the CRPS score, an array with shape [batch_size] or shape [] depending on the reduction.
+        tensor with shape [batch_size] or []: The CRPS score, when reduction is 'none' the shape is [batch_size], otherwise the shape is []. 
     """
     intervals = torch.linspace(0, 1, resolution+2, device=labels.device)[1:-1].view(-1, 1)
     weights = (intervals ** 2)[1:] - (intervals ** 2)[:-1]   # This is a trick to compute the Lesbegue integral of CDF^2 (when we only have access to inverse CDF)
@@ -50,7 +50,7 @@ def compute_nll(predictions, labels, reduction='mean'):
 
 
 def compute_std(predictions, reduction='mean', resolution=500):
-    """Compute the standard deviation of the predictions.
+    """Compute the standard deviation of the distribution predictions.
     
     Args:
         predictions (distribution): a batch of distribution predictions.
@@ -58,7 +58,7 @@ def compute_std(predictions, reduction='mean', resolution=500):
         resolution (int): the number of discretization bins, where higher resolution increases estimation accuracy but also requires more memory/compute.
     
     Returns:
-        tensor: the standard deviation, array [batch_size] or array [], the standard deviation.
+        tensor with shape [batch_size] or []: The standard deviation, when reduction is 'none' the shape is [batch_size], otherwise the shape is []. 
     """
     quantiles = _implicit_quantiles(resolution) 
     samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
@@ -67,7 +67,7 @@ def compute_std(predictions, reduction='mean', resolution=500):
 
 
 def compute_mean(predictions, reduction='mean', resolution=500):
-    """Compute the mean of the predictions.
+    """Compute the mean of the distribution predictions.
     
     Args:
         predictions (distribution): a batch of distribution predictions.
@@ -75,7 +75,7 @@ def compute_mean(predictions, reduction='mean', resolution=500):
         resolution (int): the number of discretization bins, where higher resolution increases estimation accuracy but also requires more memory/compute.
     
     Returns:
-        tensor: the computed mean, array [batch_size] or array [] depending on the reduction. 
+        tensor with shape [batch_size] or []: The computed mean, when reduction is 'none' the shape is [batch_size], otherwise the shape is []. 
     """
     quantiles = _implicit_quantiles(resolution) 
     samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
@@ -88,11 +88,10 @@ def compute_mean_std(predictions, reduction='mean', resolution=500):
     Args:
         predictions (distribution): a batch of distribution predictions.
         reduction (str): the method to aggregate the results across the batch. Can be 'none', 'mean', 'sum', 'median', 'min', or 'max'. 
-        resolution: the number of discretization bins, where higher resolution increases estimation accuracy but also requires more memory/compute.
+        resolution (int): the number of discretization bins, where higher resolution increases estimation accuracy but also requires more memory/compute.
     
     Returns:
-        tensor: the computed mean, array [batch_size] or array [] depending on the reduction.
-        tensor: the computed standard deviation, array [batch_size] or array [] depending on the reduction. 
+        tuple of two tensors with shape [batch_size] or []: The mean and the standard deviation. When reduction is 'none' the shape is [batch_size], otherwise the shape is []. 
     """
     quantiles = _implicit_quantiles(resolution) 
     samples = predictions.icdf(quantiles.to(_get_prediction_device(predictions)).view(-1, 1))  
@@ -107,16 +106,15 @@ _baseline_ece_cache = {}   # Cache for the ECE baselines. Because bootstrap is e
 def compute_ece(predictions, labels, debiased=False):
     """Compute the (weighted) ECE score as in https://arxiv.org/abs/1807.00263.
     
-    Note that this function has biased gradient because of the non-differentiable nature of sorting. 
+    Note that this function has biased gradients because of non-differentiable sorting. 
     
     Args:
         predictions (distribution): a batch of distribution predictions.
         labels (tensor): array [batch_size] of labels.
-        debiased (bool): if debiased=True then the finite sample bias is removed. If the
-        labels are truely drawn from the predictions, the this function will in expectation return 0.
+        debiased (bool): if True then the estimation bias is deducted: if the predictions are perfectly calibrated, then this function in expectation returns 0.
         
     Returns:
-        tensor: the ECE score, which is an scalar array (array of shape []).
+        tensor with shape []: The ECE score.
     """
     cdfs = predictions.cdf(labels).flatten() 
     ranking = torch.argsort(cdfs)
@@ -139,11 +137,11 @@ def plot_reliability_diagram(predictions, labels, ax=None):
     
     Args:
         predictions (distribution): a batch of distribution predictions.
-        labels (tensor): the labels, array [batch_size].
+        labels (tensor with shape [batch_size]): the true labels. 
         ax (axes): optional matplotlib.axes.Axes, the axes to plot the figure on. If None, automatically creates a figure with recommended size.
         
     Returns:
-        axes: the ax on which the plot is made, it is an instance of matplotlib.axes.Axes. 
+        matplotlib.axes.Axes: the ax on which the plot is made.
     """
     with torch.no_grad():
         device = _get_prediction_device(predictions)
@@ -176,14 +174,14 @@ def plot_density_sequence(predictions, labels=None, max_count=100, ax=None, reso
 
     Args:
         predictions (distribution): a batch of distribution predictions.
-        labels (tensor): the labels, if None then the labels are not plotted.
+        labels (tensor with shape [batch_size]): the true labels. If None the true labels are not plotted. 
         ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
         max_count (int): the maximum number of PDFs to plot.
         resolution (int): the number of points to compute the density. Higher resolution leads to a more accurate plot, but also requires more computation.
         smooth_bw (int): smooth the PDF with a uniform kernel whose bandwidth is smooth_bw / resolution.
 
     Returns:
-        axes: the ax on which the plot is made, it is an instance of matplotlib.axes.Axes.
+        matplotlib.axes.Axes: the ax on which the plot is made.
     """
     device = _get_prediction_device(predictions)
     values = predictions.icdf(torch.linspace(0, 1, resolution+2, device=device)[1:-1].view(-1, 1)).detach().cpu()  # [n_quantiles, batch_shape]
@@ -244,13 +242,13 @@ def plot_cdf_sequence(predictions, labels=None, ax=None, max_count=20, resolutio
 
     Args:
         predictions (distribution): a batch of distribution predictions.
-        labels (tensor): the labels, an array [batch_size], if not provided then no label will be plotted.
+        labels (tensor with shape [batch_size]): the true labels. If None the true labels are not plotted. 
         ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
         max_count (int): the maximum number of CDFs to plot.
         resolution (int): the number of points to compute the density. Higher resolution leads to a more accurate plot, but also requires more computation.
 
     Returns:
-        axes: the ax on which the plot is made.
+        matplotlib.axes.Axes: the ax on which the plot is made.
     """
     # Figure out the maximum number of CDFs to plot
     n_plot = _get_prediction_batch_shape(predictions)
@@ -296,17 +294,17 @@ def plot_cdf_sequence(predictions, labels=None, ax=None, max_count=20, resolutio
 
 
 def plot_cdf(predictions, labels=None, ax=None, max_count=30, resolution=200):
-    """Plot the CDF functions.
+    """ Plot the CDF functions.
 
     Args:
         predictions (distribution): a batch of distribution predictions.
-        labels (tensor): the labels.
+        labels (tensor with shape [batch_size]): the true labels. If None the true labels are not plotted. 
         ax (axes): the axes to plot the figure on, if None automatically creates a figure with recommended size.
         max_count (int): the maximum number of CDFs to plot.
         resolution (int): the number of points to compute the density. Higher resolution leads to a more accurate plot, but also requires more computation.
 
     Returns:
-        axes: the ax on which the plot is made.
+        matplotlib.axes.Axes: the ax on which the plot is made.
     """
     n_plot = _get_prediction_batch_shape(predictions)
     if n_plot > max_count:
@@ -345,13 +343,13 @@ def plot_icdf(predictions, labels=None, ax=None, max_count=30, resolution=200):
 
     Args:
         predictions (distribution): a batch of distribution predictions.
-        labels (tensor): the labels, an array [batch_size].
+        labels (tensor with shape [batch_size]): the true labels. If None the true labels are not plotted. 
         ax (axes): optional matplotlib.axes.Axes, the axes to plot the figure on. If None, automatically creates a figure with recommended size.
         max_count (int): the maximum number of CDFs to plot.
         resolution (int): the number of points to compute the density. Higher resolution leads to a more accurate plot, but also requires more computation.
 
     Returns:
-        axes: the ax on which the plot is made.
+        matplotlib.axes.Axes: the ax on which the plot is made.
     """
     n_plot = _get_prediction_batch_shape(predictions)
     if n_plot > max_count:
