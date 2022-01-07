@@ -11,23 +11,18 @@ Uncertainty quantification (UQ) --- prediction models should know what they do n
 
 Torchuq provides an easy-to-use arsenal of uncertainty quantification methods with the following key features: 
 
-**Plug and Play**: Simple unified interface to access a large number of UQ methods.  
-
-**Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines.
-
-**Documentation**: Detailed tutorial to walk through popular UQ algorithms. Extensive documentation. 
-
-**Extensive and Extensible**: Supports calibration, conformal, multi-calibration and forecast evaluation. Easy to add new methods. 
+**Plug and Play**: Simple unified interface to access a large number of UQ methods. <br>
+**Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines. <br>
+**Documentation**: Detailed tutorial to walk through popular UQ algorithms. Extensive documentation. <br>
+**Extensive**: Supports calibration, conformal, multi-calibration, forecast evaluation, etc. 
 
 ### For researchers 
 
-Torchuq provides a platform for conducting and distributing research on uncertainty quantification. Torchuq is designed for the following benefits: 
+Torchuq provides a platform for conducting and distributing UQ research with the following key features:
 
-**Baseline implementation**: high quality implementation of many popular baseline methods to standardize comparison. 
-
-**Benchmark datasets**: a large set of datasets used in recent UQ papers with a one-line interface to retrieve these datasets.
-
-**Distribute your research**: you are welcome to distribute your algorithm via the TorchUQ interface. For details see [link]. 
+**Baseline**: high quality implementation of many popular baseline methods to standardize comparison. <br>
+**Benchmark**: a large set of datasets from recent UQ papers with a retrieved by a unified interface. <br> 
+**Distribute your research**: you are welcome to distribute your algorithm via the TorchUQ interface. See [link]. 
 
 ## Installation 
 
