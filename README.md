@@ -5,30 +5,24 @@
 
 ## Why TorchUQ 
 
-TorchUQ is a one-stop solution for uncertainty quantification (UQ).
-
-Accurate uncertainty quantification (UQ) is extremely important in high-stakes applications such as autonomous driving, healthcare, and public policy --- prediction models in such applications should know what they do not know. UQ also finds numerous applications in active learning, statistical inference, or in natural science and engineering applications that are rife with sources of uncertainty. 
+Uncertainty quantification (UQ) --- prediction models should know what they do not know --- finds numerous applications in active learning, statistical inference, trustworthy machine learning, or in natural science and engineering applications that are rife with sources of uncertainty. TorchUQ aims to help both practitioners and researchers use UQ methods with ease. 
 
 ###  For practitioners
-Torchuq aims to provide an easy to use arsenal of uncertainty quantification methods. Torchuq is designed for the following benefits: 
 
-**Plug and Play**: Simple unified interface to access a large arsenal of UQ methods.  
+Torchuq provides an easy-to-use arsenal of uncertainty quantification methods with the following key features: 
 
-**Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines.
-
-**Documentation**: Detailed tutorial to walk through popular UQ algorithms. Extensive documentation. 
-
-**Extensive and Extensible**: Supports calibration, conformal, multi-calibration and forecast evaluation. Easy to add new methods. 
+**Plug and Play**: Simple unified interface to access a large number of UQ methods. <br>
+**Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines. <br>
+**Documentation**: Detailed tutorial to walk through popular UQ algorithms. Extensive documentation. <br>
+**Extensive**: Supports calibration, conformal, multi-calibration, forecast evaluation, etc. 
 
 ### For researchers 
 
-Torchuq aims to provide a easy to use platform for conducting and distributing research on uncertainty quantification. Torchuq is designed for the following benefits: 
+Torchuq provides a platform for conducting and distributing UQ research with the following key features:
 
-**Baseline implementation**: TorchUQ provides high quality implementation of many popular baseline methods to standardize comparison. 
-
-**Benchmark datasets**: a large set of datasets used in recent UQ papers with a one-line interface to retrieve these datasets.
-
-**Distribute your research**: you are welcome to distribute your algorithm via the TorchUQ interface. For details see [link]. 
+**Baseline**: high quality implementation of many popular baseline methods to standardize comparison. <br>
+**Benchmark**: a large set of datasets from recent UQ papers with a retrieved by a unified interface. <br> 
+**Distribute your research**: you are welcome to distribute your algorithm via the TorchUQ interface. See [link]. 
 
 ## Installation 
 
@@ -42,6 +36,7 @@ pypi package link to come
 
 ## Quickstart 
 
+We first import torchuq and the functions that we will use. 
 ```
 import torchuq
 from torchuq.evaluate import distribution 
@@ -52,7 +47,7 @@ In this very simple example, we create a synthetic prediction (which is a set of
 ```
 predictions, labels = create_example_regression()
 ```
-The example predictions are intentially incorrect (i.e. the label is not drawn from the predictions). 
+The example predictions are intentionally incorrect (i.e. the label is not drawn from the predictions). 
 We will recalibrate the distribution with a powerful recalibration algorithm called conformal calibration. It takes as input the predictions and the labels, and learns a recalibration map that can be applied to new data (here for illustration purposes we apply it to the original data). 
 
 ```
@@ -73,5 +68,5 @@ distribution.plot_density_sequence(adjusted_predictions, labels, smooth_bw=10)
 
 ## What's Next? 
 
-A good way to start is to read about the [basic design philosophy and usage](https://torchuq.github.io/overview.html) of the package, then go through these [tutorials](https://github.com/TorchUQ/torchuq/tree/main/examples/tutorial). All the tutorials are interactive jupyter notebooks. You can either download them to run locally or view them [here](https://torchuq.github.io/tutorials/index.html). 
+A good way to start is to read about the [basic design philosophy and usage](https://torchuq.github.io/docs/overview.html), then go through these [tutorials](https://github.com/TorchUQ/torchuq/tree/main/examples/tutorial). All the tutorials are interactive jupyter notebooks. You can either download them to run locally or view them statically [here](https://torchuq.github.io/docs/tutorials/index.html). 
 
