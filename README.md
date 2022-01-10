@@ -1,4 +1,4 @@
-## Torchuq [logo here]
+## TorchUQ
 
 > TorchUQ is an extensive library for uncertainty quantification (UQ) based on pytorch.
 > TorchUQ currently supports 10 representations for uncertainty, and around 50 different methods for uncertainty evaluation and visualization, calibration and conformal prediction. 
@@ -9,24 +9,24 @@ Uncertainty quantification (UQ)—prediction models should know what they do not
 
 ###  For practitioners
 
-Torchuq provides an easy-to-use arsenal of uncertainty quantification methods with the following key features: 
+TorchUQ provides an easy-to-use arsenal of uncertainty quantification methods with the following key features:
 
-**Plug and Play**: Simple unified interface to access a large number of UQ methods. <br>
-**Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines. <br>
-**Documentation**: Detailed tutorial to walk through popular UQ algorithms. Extensive documentation. <br>
-**Extensive**: Supports calibration, conformal, multi-calibration, forecast evaluation, etc. 
+- **Plug and Play**: Simple unified interface to access a large number of UQ methods.
+- **Built on PyTorch**: Native GPU & auto-diff support, seamless integration with deep learning pipelines.
+- **Documentation**: Detailed tutorial to walk through popular UQ algorithms. Extensive documentation.
+- **Extensive**: Supports calibration, conformal, multi-calibration, forecast evaluation, etc.
 
 ### For researchers 
 
-Torchuq provides a platform for conducting and distributing UQ research with the following key features:
+TorchUQ provides a platform for conducting and distributing UQ research with the following key features:
 
-**Baseline**: high quality implementation of many popular baseline methods to standardize comparison. <br>
-**Benchmark**: a large set of datasets from recent UQ papers with a retrieved by a unified interface. <br> 
-**Distribute your research**: you are welcome to distribute your algorithm via the TorchUQ interface. See [link]. 
+- **Baselines**: high quality implementation of many popular baseline methods to standardize comparison.
+- **Benchmarks**: a large number of datasets from recent UQ papers, retrieved by a unified interface.
+- **Distribute your research**: you are welcome to distribute your algorithms via the TorchUQ interface.
 
 ## Installation 
 
-First download the torchuq from pypi. To run the code, you can install the dependencies with the follwoing command
+First download TorchUQ from pypi. To run the code, you can install the dependencies with the following command:
 
 ```bash
 pip3 install requirements
@@ -36,7 +36,7 @@ pypi package link to come
 
 ## Quickstart 
 
-We first import torchuq and the functions that we will use. 
+We first import TorchUQ and the functions that we will use.
 ```python
 import torchuq
 from torchuq.evaluate import distribution 
